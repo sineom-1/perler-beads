@@ -177,8 +177,21 @@ function mergeRegions(
           dominantKey = info.key;
         }
       }
+      // Oklab×100 / CIEDE2000 of ~10 is "nearby beads". Yellow vs white is ~22,
+      // bright green vs white is ~28. A threshold of 30 therefore reaches
+      // clearly different colors. Majority recoloring must not repaint a
+      // large area of one of those colors; only speckles may cross that gap.
+      const noiseMax = Math.max(8, Math.round((rows * cols) * 0.005));
+      const largeGap = Math.min(threshold, 10);
       for (const spot of region) {
-        merged[spot.r][spot.c] = { key: dominantKey, hex: dominantHex, isExternal: false };
+        const cell = grid[spot.r][spot.c];
+        const count = frequency.get(cell.hex)?.count ?? 0;
+        const gap = distance(cell.hex, dominantHex);
+        if (count > noiseMax && gap >= largeGap) {
+          merged[spot.r][spot.c] = { key: cell.key, hex: cell.hex, isExternal: false };
+        } else {
+          merged[spot.r][spot.c] = { key: dominantKey, hex: dominantHex, isExternal: false };
+        }
       }
     }
   }

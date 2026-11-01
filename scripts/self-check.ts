@@ -1,5 +1,5 @@
-import { colorDistance } from "../src/lib/color";
-import { displayCode, getPalette, paletteCount } from "../src/lib/palette";
+import { colorDistance, findClosest } from "../src/lib/color";
+import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
 
 async function main() {
@@ -61,6 +61,52 @@ async function main() {
   if (after.total !== 64) throw new Error(`去背景后总数 ${after.total}`);
   if (after.counts.length !== 1 || after.counts[0].key !== "A14") {
     throw new Error("去背景后应只剩红色");
+  }
+
+  const full = getPalette("291").filter((color) => color.key !== "B08");
+  const b08 = getColorByHex("#1C9C4F");
+  if (!b08) throw new Error("缺少 B08");
+  const remapped = findClosest(b08.rgb, full, "oklab");
+  if (remapped.key !== "B07") {
+    throw new Error(`排除 B08 应落到 B07，实际 ${remapped.key}`);
+  }
+
+  const side = 24;
+  const pixels = new Uint8ClampedArray(side * side * 4);
+  for (let y = 0; y < side; y++) {
+    for (let x = 0; x < side; x++) {
+      const index = (y * side + x) * 4;
+      const face = x >= 4 && x < 20 && y >= 4 && y < 20;
+      const rgb = face ? [255, 200, 0] : [255, 255, 255];
+      pixels[index] = rgb[0];
+      pixels[index + 1] = rgb[1];
+      pixels[index + 2] = rgb[2];
+      pixels[index + 3] = 255;
+    }
+  }
+  const smiley = await buildPattern(
+    { width: side, height: side, data: pixels },
+    {
+      cols: side,
+      rows: side,
+      palette: getPalette("168"),
+      mode: "dominant",
+      threshold: 30,
+      metric: "oklab",
+    },
+  );
+  const yellow = smiley.counts.find((item) => item.key === "A26");
+  const white = smiley.counts.find((item) => item.key === "T01");
+  if (!yellow || yellow.count !== 16 * 16) {
+    throw new Error(`黄脸被吞掉了 ${yellow?.count ?? 0}`);
+  }
+  if (!white || white.count !== side * side - 16 * 16) {
+    throw new Error(`白底数量错误 ${white?.count ?? 0}`);
+  }
+  const peeled = removeBorderBackground(smiley.grid);
+  const peeledTally = tally(peeled.grid);
+  if (peeledTally.total !== 16 * 16 || peeledTally.counts[0]?.key !== "A26") {
+    throw new Error("去背景不应剥掉黄脸");
   }
 
   console.log(

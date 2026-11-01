@@ -10,7 +10,6 @@ import {
   PALETTE_CHOICES,
   compareCodes,
   displayCode,
-  getAllColors,
   getColorByHex,
   getPalette,
   paletteCount,
@@ -328,10 +327,8 @@ export default function BeadStudio() {
     const current = gridRef.current;
     const source = getColorByHex(hex);
     if (!current || !source) return;
-    const present = new Set(
-      counts.map((item) => item.hex).filter((item) => item !== hex && !excluded.includes(item)),
-    );
-    const targets = getAllColors().filter((color) => present.has(color.hex));
+    const skip = new Set([...excluded, hex]);
+    const targets = getPalette(paletteId).filter((color) => !skip.has(color.hex));
     if (targets.length === 0) {
       notify("至少保留一种颜色。");
       return;
@@ -420,7 +417,7 @@ export default function BeadStudio() {
 
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen max-md:pb-28"
       onDragOver={(event) => {
         event.preventDefault();
         setDraggingFile(true);
@@ -533,7 +530,7 @@ export default function BeadStudio() {
                 onChange={(event) => setThreshold(Number(event.target.value))}
               />
               <span className="mt-1 block text-xs font-normal leading-5 text-[#6d6258]">
-                0 表示不合并。数值越大，相邻且相近的颜色越容易收成同一色号。
+                0 表示不合并。数值越大，越容易清掉零星杂色。成片且明显不同的颜色会保留，例如黄脸不会并进白底。
               </span>
             </label>
 
@@ -555,7 +552,7 @@ export default function BeadStudio() {
 
             <div>
               <p className="text-sm font-semibold">品牌色号</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="brand-row mt-2 flex max-w-full flex-wrap gap-2">
                 {COLOR_SYSTEMS.map((system) => (
                   <button
                     key={system}
@@ -611,7 +608,9 @@ export default function BeadStudio() {
                 </button>
               </div>
               <p className="mt-1 text-xs leading-5 text-[#6d6258]">
-                {metric === "ciede2000" ? "CIEDE2000 建议把阈值放在 8 到 18。" : "Oklab 与上游阈值手感一致，30 是适中的清理强度。"}
+                {metric === "ciede2000"
+                  ? "CIEDE2000 里，8 到 12 只合并很接近的色号。大块不同色不会被吞掉。"
+                  : "Oklab 距离里，黄和白大约相差 22。30 可以清杂色，但大块不同色会留下来。"}
               </p>
             </div>
 

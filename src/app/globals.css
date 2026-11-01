@@ -29,3 +29,13 @@ canvas.bead-canvas {
 input[type="range"] {
   accent-color: var(--bead);
 }
+
+@media (max-width: 767px) {
+  html {
+    scroll-padding-bottom: 6.5rem;
+  }
+
+  .brand-row {
+    scroll-margin-bottom: 6.5rem;
+  }
+}
