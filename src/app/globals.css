@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --paper: #f3ecdf;
+  --ink: #241c16;
+  --card: #fffdf8;
+  --line: #e4d5bf;
+  --bead: #c2412d;
+  --teal: #1f6f6a;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--paper);
+  background-image: radial-gradient(#e5d3b4 0.7px, transparent 0.75px);
+  background-size: 14px 14px;
+  color: var(--ink);
+  font-family: "WenQuanYi Micro Hei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+canvas.bead-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+input[type="range"] {
+  accent-color: var(--bead);
+}
