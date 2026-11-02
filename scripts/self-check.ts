@@ -1,3 +1,4 @@
+import { planBoards } from "../src/lib/boardPdf";
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
@@ -107,6 +108,20 @@ async function main() {
   const peeledTally = tally(peeled.grid);
   if (peeledTally.total !== 16 * 16 || peeledTally.counts[0]?.key !== "A26") {
     throw new Error("去背景不应剥掉黄脸");
+  }
+
+  const boards = planBoards(48, 48, 29);
+  if (boards.length !== 4) throw new Error(`48 图应按 29 分成 4 板，实际 ${boards.length}`);
+  if (boards.map((board) => board.label).join(",") !== "A1,A2,B1,B2") {
+    throw new Error(`分板标号错误 ${boards.map((board) => board.label).join(",")}`);
+  }
+  const edge = boards[3];
+  if (edge.row1 - edge.row0 !== 19 || edge.col1 - edge.col0 !== 19) {
+    throw new Error("边缘板应保留不足 29 的尺寸");
+  }
+  const wide = planBoards(30, 60, 58);
+  if (wide.length !== 2 || wide[1].col1 - wide[1].col0 !== 2) {
+    throw new Error("58 分板应保留右侧不足一块的窄板");
   }
 
   console.log(

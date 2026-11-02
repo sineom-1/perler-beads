@@ -165,6 +165,10 @@ export default function BeadStudio() {
   const [exportCoords, setExportCoords] = useState(true);
   const [exportShape, setExportShape] = useState<Shape>("square");
   const [exportMirror, setExportMirror] = useState(false);
+  const [pdfBoard, setPdfBoard] = useState<29 | 58 | 87>(29);
+  const [pdfPaper, setPdfPaper] = useState<"a4" | "letter">("a4");
+  const [pdfScale, setPdfScale] = useState<"fit" | "2.6" | "5">("fit");
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [sheetTab, setSheetTab] = useState<SheetTab>("size");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sideTab, setSideTab] = useState<"settings" | "colors">("settings");
@@ -805,6 +809,32 @@ export default function BeadStudio() {
     downloadCanvas(canvas, `拼豆采购清单-${colorSystem}.png`);
   }
 
+  async function downloadPdf() {
+    const current = gridRef.current;
+    if (!current || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const { downloadBoardPdf } = await import("@/lib/boardPdf");
+      const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
+      await downloadBoardPdf({
+        grid: current,
+        total,
+        systemLabel: colorSystem,
+        paletteLabel,
+        showCodes: exportCodes,
+        mirror: exportMirror,
+        boardSize: pdfBoard,
+        paper: pdfPaper,
+        scale: pdfScale,
+        codeFor: (hex) => displayCode(hex, colorSystem),
+      });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "PDF 生成失败");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   async function copyList() {
     const lines = sortedCounts.map((item) => `${colorSystem} ${displayCode(item.hex, colorSystem)} ×${item.count}`);
     lines.push(`合计 ${total}`);
@@ -1077,7 +1107,10 @@ export default function BeadStudio() {
         </div>
         <div className="top-actions">
           <button type="button" className="ghost" onClick={() => fileRef.current?.click()}>更换图片</button>
-          <button type="button" className="primary" onClick={() => setExportOpen(true)}>导出</button>
+          <button type="button" className="primary" onClick={() => {
+            setPdfBoard(cols === 58 || cols === 87 ? cols : 29);
+            setExportOpen(true);
+          }}>导出</button>
         </div>
       </header>
       <div className="workspace">
@@ -1281,10 +1314,23 @@ export default function BeadStudio() {
                   <button type="button" className="chip" data-on={exportShape === "round"} onClick={() => setExportShape((value) => (value === "round" ? "square" : "round"))}>{exportShape === "round" ? "圆豆" : "方格"}</button>
                   <button type="button" className="chip" data-on={exportMirror} onClick={() => setExportMirror((value) => !value)}>镜像</button>
                 </div>
+                <div className="chips">
+                  {([29, 58, 87] as const).map((size) => (
+                    <button key={size} type="button" className="chip" data-on={pdfBoard === size} onClick={() => setPdfBoard(size)}>{size} 板</button>
+                  ))}
+                </div>
+                <div className="chips">
+                  <button type="button" className="chip" data-on={pdfPaper === "a4"} onClick={() => setPdfPaper("a4")}>A4</button>
+                  <button type="button" className="chip" data-on={pdfPaper === "letter"} onClick={() => setPdfPaper("letter")}>Letter</button>
+                  <button type="button" className="chip" data-on={pdfScale === "fit"} onClick={() => setPdfScale("fit")}>适应页面</button>
+                  <button type="button" className="chip" data-on={pdfScale === "2.6"} onClick={() => setPdfScale("2.6")}>2.6mm</button>
+                  <button type="button" className="chip" data-on={pdfScale === "5"} onClick={() => setPdfScale("5")}>5mm</button>
+                </div>
                 <div className="export-actions">
                   <button type="button" className="primary" onClick={downloadPattern}>下载图纸 PNG</button>
                   <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
                   <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
+                  <button type="button" className="ghost" disabled={pdfBusy} onClick={() => void downloadPdf()}>{pdfBusy ? "正在生成 PDF…" : "下载分板 PDF"}</button>
                 </div>
               </div>
             </div>

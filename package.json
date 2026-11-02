@@ -10,6 +10,7 @@
     "check": "tsx scripts/self-check.ts"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.66.0",
     "next": "^15.5.28",
     "react": "^19.0.0",
