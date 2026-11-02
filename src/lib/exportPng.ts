@@ -21,6 +21,9 @@ export interface PatternExportOptions {
   includeStats: boolean;
   gridInterval: number;
   showCoordinates: boolean;
+  showGrid?: boolean;
+  beadShape?: "round" | "square";
+  mirror?: boolean;
   codeFor: (hex: string) => string;
 }
 
@@ -63,9 +66,13 @@ function drawBeadMark(context: CanvasRenderingContext2D, x: number, y: number, s
 }
 
 export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasElement {
-  const { grid, counts, total, systemLabel, paletteLabel, showCodes, includeStats, codeFor } = options;
+  const sourceGrid = options.mirror ? options.grid.map((row) => [...row].reverse()) : options.grid;
+  const grid = sourceGrid;
+  const { counts, total, systemLabel, paletteLabel, showCodes, includeStats, codeFor } = options;
   const rows = grid.length;
   const cols = grid[0]?.length ?? 0;
+  const showGrid = options.showGrid !== false;
+  const round = options.beadShape === "round";
   const cell = chooseCell(cols, rows);
   const interval = Math.max(1, options.gridInterval);
   const axis = options.showCoordinates ? Math.max(26, Math.round(cell * 0.9)) : 0;
@@ -134,8 +141,17 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
       const bead = grid[row][col];
       const x = originX + col * cell;
       const y = originY + row * cell;
-      context.fillStyle = bead.isExternal ? "#ffffff" : bead.hex;
-      context.fillRect(x, y, cell, cell);
+      if (bead.isExternal || !round) {
+        context.fillStyle = bead.isExternal ? "#ffffff" : bead.hex;
+        context.fillRect(x, y, cell, cell);
+      } else {
+        context.fillStyle = "#ffffff";
+        context.fillRect(x, y, cell, cell);
+        context.beginPath();
+        context.fillStyle = bead.hex;
+        context.arc(x + cell / 2, y + cell / 2, cell * 0.42, 0, Math.PI * 2);
+        context.fill();
+      }
       if (showCodes && !bead.isExternal) {
         const label = codeFor(bead.hex);
         let size = Math.max(8, Math.floor(cell * 0.38));
@@ -151,27 +167,37 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
           context.fillText(label, x + cell / 2, y + cell / 2 + 0.5);
         }
       }
-      context.strokeStyle = "rgba(36,28,22,0.12)";
-      context.lineWidth = 1;
-      context.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+      if (showGrid && !round) {
+        context.strokeStyle = "rgba(42,36,32,0.10)";
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+      }
     }
   }
 
-  context.strokeStyle = "#241c16";
-  context.lineWidth = 1.5;
-  context.beginPath();
-  for (let col = interval; col < cols; col += interval) {
-    const x = originX + col * cell;
-    context.moveTo(x, originY);
-    context.lineTo(x, originY + gridH);
+  if (showGrid) {
+    const strokeGuides = (step: number, color: string, width: number) => {
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.beginPath();
+      for (let col = step; col < cols; col += step) {
+        const x = originX + col * cell;
+        context.moveTo(x, originY);
+        context.lineTo(x, originY + gridH);
+      }
+      for (let row = step; row < rows; row += step) {
+        const y = originY + row * cell;
+        context.moveTo(originX, y);
+        context.lineTo(originX + gridW, y);
+      }
+      context.stroke();
+    };
+    strokeGuides(5, "rgba(42,36,32,0.45)", 2);
+    strokeGuides(29, "rgba(232,112,79,0.85)", 2.5);
+    context.strokeStyle = "#2A2420";
+    context.lineWidth = 1.5;
+    context.strokeRect(originX + 0.5, originY + 0.5, gridW, gridH);
   }
-  for (let row = interval; row < rows; row += interval) {
-    const y = originY + row * cell;
-    context.moveTo(originX, y);
-    context.lineTo(originX + gridW, y);
-  }
-  context.stroke();
-  context.strokeRect(originX + 0.5, originY + 0.5, gridW, gridH);
 
   if (includeStats && sorted.length > 0) {
     const top = originY + gridH + axis + 28;
@@ -210,11 +236,11 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
     context.fillText(`合计 ${total} 颗`, width - margin, footerY);
   }
 
-  context.fillStyle = "#8a7968";
+  context.fillStyle = "#A0968D";
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.fillText("色号数据改编自 Zippland/perler-beads · AGPL-3.0", margin, height - 18);
+  context.fillText(`拼豆图纸 · ${new Date().toLocaleDateString("zh-CN")}`, margin, height - 18);
   return canvas;
 }
 
@@ -272,10 +298,10 @@ export function renderShoppingListCanvas(options: {
     context.fillText(`${item.count}`, x + columnWidth - 28, y + rowH / 2 - 2);
   });
 
-  context.fillStyle = "#8a7968";
+  context.fillStyle = "#A0968D";
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
-  context.fillText("色号数据改编自 Zippland/perler-beads · AGPL-3.0", 24, height - 22);
+  context.fillText(`拼豆图纸 · ${new Date().toLocaleDateString("zh-CN")}`, 24, height - 22);
   return canvas;
 }
 

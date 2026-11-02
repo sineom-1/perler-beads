@@ -364,6 +364,54 @@ export function paintCell(grid: GridCell[][], row: number, col: number, color: P
   );
 }
 
+export function replaceHex(
+  grid: GridCell[][],
+  fromHex: string,
+  color: PaletteColor,
+): { grid: GridCell[][]; replaced: number } {
+  let replaced = 0;
+  const next = grid.map((row) =>
+    row.map((cell) => {
+      if (!cell.isExternal && cell.hex === fromHex) {
+        replaced += 1;
+        return { key: color.key, hex: color.hex, isExternal: false };
+      }
+      return { ...cell };
+    }),
+  );
+  return { grid: next, replaced };
+}
+
+export function floodFillPaint(grid: GridCell[][], row: number, col: number, color: PaletteColor): GridCell[][] {
+  const start = grid[row]?.[col];
+  if (!start) return grid;
+  if (!start.isExternal && start.hex === color.hex) return grid;
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const same = (cell: GridCell) =>
+    start.isExternal ? cell.isExternal : !cell.isExternal && cell.hex === start.hex;
+  const next = cloneGrid(grid);
+  const seen = Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
+  const stack = [{ r: row, c: col }];
+  seen[row][col] = true;
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    next[current.r][current.c] = { key: color.key, hex: color.hex, isExternal: false };
+    for (const [nr, nc] of [
+      [current.r + 1, current.c],
+      [current.r - 1, current.c],
+      [current.r, current.c + 1],
+      [current.r, current.c - 1],
+    ]) {
+      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols || seen[nr][nc]) continue;
+      if (!same(next[nr][nc])) continue;
+      seen[nr][nc] = true;
+      stack.push({ r: nr, c: nc });
+    }
+  }
+  return next;
+}
+
 export function floodErase(grid: GridCell[][], row: number, col: number): GridCell[][] {
   const start = grid[row]?.[col];
   if (!start || start.isExternal) return grid;
