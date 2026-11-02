@@ -108,6 +108,106 @@ export function preferredScale(boardSize: PdfBoardSize, paper: PdfPaper): PdfSca
   return pitchFits(boardSize, paper, pitch === "5" ? 5 : 2.6) ? pitch : "fit";
 }
 
+/** 58 and 87 are 5mm boards that do not fit a page at 1:1, so the chip says scaled print only. */
+export function boardChipLabel(size: PdfBoardSize): string {
+  if (size === 58 || size === 87) return `${size} 仅支持缩放打印`;
+  return `${size} 板`;
+}
+
+/** Interior bold grid lines, counted from this board's own edge (5, 10, 15, …). */
+export function boldGuideOffsets(length: number): number[] {
+  const marks: number[] = [];
+  for (let local = 5; local < length; local += 5) marks.push(local);
+  return marks;
+}
+
+/** 1-based axis numbers for one board: the first cell, every fifth, and the last cell. */
+export function boardAxisNumbers(length: number): number[] {
+  const numbers: number[] = [];
+  for (let n = 1; n <= length; n++) {
+    if (n === 1 || n === length || n % 5 === 0) numbers.push(n);
+  }
+  return numbers;
+}
+
+/** Global placement stays in the header; the grid itself is numbered per board. */
+export function boardPageHeader(board: BoardSlice): string {
+  return `总览第 ${board.boardRow + 1} 行第 ${board.boardCol + 1} 列 · 全局行 ${board.row0 + 1}–${board.row1} · 列 ${board.col0 + 1}–${board.col1}`;
+}
+
+const PDF_EXPORT_PREFS_KEY = "perler-pdf-export";
+
+export function pdfExportPrefsKey(): string {
+  return PDF_EXPORT_PREFS_KEY;
+}
+
+export interface PdfExportPrefs {
+  pitch: BeadPitch;
+  board: PdfBoardSize;
+  paper: PdfPaper;
+  scale: PdfScale;
+}
+
+const PDF_BOARD_SIZES = new Set<number>([...STANDARD_BOARDS, ...MINI_BOARDS]);
+
+export function parsePdfPrefs(raw: string | null): PdfExportPrefs | null {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as { board?: unknown; paper?: unknown; scale?: unknown };
+    if (typeof data.board !== "number" || !PDF_BOARD_SIZES.has(data.board)) return null;
+    if (data.paper !== "a4" && data.paper !== "letter") return null;
+    if (data.scale !== "fit" && data.scale !== "2.6" && data.scale !== "5") return null;
+    const board = data.board as PdfBoardSize;
+    const pitch = boardPitch(board);
+    const scale = data.scale === "fit" || data.scale === pitch ? data.scale : preferredScale(board, data.paper);
+    return { pitch, board, paper: data.paper, scale };
+  } catch {
+    return null;
+  }
+}
+
+export function serializePdfPrefs(prefs: PdfExportPrefs): string {
+  return JSON.stringify({ pitch: prefs.pitch, board: prefs.board, paper: prefs.paper, scale: prefs.scale });
+}
+
+/** 200dpi so 2.6mm codes have enough pixels. One canvas is reused for every page. */
+export const PDF_DPI = 200;
+export const PDF_PX_PER_MM = PDF_DPI / 25.4;
+
+function codeCandidates(code: string): string[] {
+  const full = code.trim();
+  if (!full) return [];
+  const candidates = [full];
+  const unpadded = full.replace(/^([A-Za-z]+)0+(\d+)$/, "$1$2");
+  if (unpadded !== full) candidates.push(unpadded);
+  if (full.length > 3) candidates.push(full.slice(0, 3));
+  if (full.length > 2) candidates.push(full.slice(0, 2));
+  return [...new Set(candidates)];
+}
+
+function estimateTextWidth(text: string, size: number): number {
+  let width = 0;
+  for (const char of text) width += char.charCodeAt(0) > 255 ? size : size * 0.62;
+  return width;
+}
+
+/** Fit a bead code into a cell, shrinking the font and then abbreviating. */
+export function fitBeadCode(code: string, cellMm: number): { text: string; size: number } | null {
+  if (!(cellMm >= 1.6)) return null;
+  const minSize = cellMm < 3.1 ? 0.7 : 1.15;
+  const maxWidth = Math.max(0.4, cellMm - 0.22);
+  for (const text of codeCandidates(code)) {
+    let size = Math.min(cellMm * 0.46, 3.2);
+    while (estimateTextWidth(text, size) > maxWidth && size > minSize) {
+      size = Math.round((size - 0.05) * 100) / 100;
+    }
+    if (estimateTextWidth(text, size) <= maxWidth + 0.01 && size >= minSize - 0.001) {
+      return { text, size };
+    }
+  }
+  return null;
+}
+
 function orient(grid: GridCell[][], mirror: boolean): GridCell[][] {
   return mirror ? grid.map((row) => [...row].reverse()) : grid;
 }
@@ -139,10 +239,17 @@ class Sheet {
     const context = this.canvas.getContext("2d");
     if (!context) throw new Error("无法创建 PDF 页面");
     this.ctx = context;
-    this.ctx.setTransform(pxPerMm, 0, 0, pxPerMm, 0, 0);
+    this.clear();
+  }
+
+  clear() {
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.setTransform(this.pxPerMm, 0, 0, this.pxPerMm, 0, 0);
     this.ctx.fillStyle = "#ffffff";
-    this.ctx.fillRect(0, 0, widthMm, heightMm);
+    this.ctx.fillRect(0, 0, this.width, this.height);
     this.ctx.textBaseline = "middle";
+    this.ctx.lineWidth = 0.2;
   }
 
   text(value: string, x: number, y: number, size: number, color = "#2A2420", weight = 500, align: CanvasTextAlign = "left") {
@@ -199,6 +306,33 @@ function drawLegend(sheet: Sheet, items: LegendItem[], x: number, y: number, wid
   });
 }
 
+function drawBeadCode(sheet: Sheet, code: string, hex: string, x: number, y: number, cell: number) {
+  const fitted = fitBeadCode(code, cell);
+  if (!fitted) return;
+  const maxWidth = Math.max(0.4, cell - 0.22);
+  let { text, size } = fitted;
+  sheet.ctx.textAlign = "center";
+  sheet.ctx.textBaseline = "middle";
+  const measure = (label: string, fontSize: number) => {
+    sheet.ctx.font = `700 ${fontSize}px ${FONT}`;
+    return sheet.ctx.measureText(label).width;
+  };
+  while (size > 0.65 && measure(text, size) > maxWidth) size = Math.round((size - 0.05) * 100) / 100;
+  if (measure(text, size) > maxWidth) {
+    const shorter = codeCandidates(code).find((label) => label.length < text.length && measure(label, size) <= maxWidth);
+    if (!shorter) return;
+    text = shorter;
+  }
+  const fill = contrastText(hex);
+  const cx = x + cell / 2;
+  const cy = y + cell / 2;
+  sheet.ctx.lineWidth = Math.max(0.12, size * 0.14);
+  sheet.ctx.strokeStyle = fill === "#ffffff" ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.85)";
+  sheet.ctx.strokeText(text, cx, cy);
+  sheet.ctx.fillStyle = fill;
+  sheet.ctx.fillText(text, cx, cy);
+}
+
 function drawPattern(
   sheet: Sheet,
   grid: GridCell[][],
@@ -222,44 +356,34 @@ function drawPattern(
       const empty = !bead || bead.isExternal || bead.key === "ERASE";
       sheet.ctx.fillStyle = empty ? "#F7F2EB" : bead.hex;
       sheet.ctx.fillRect(x, y, cell, cell);
-      if (showCodes && !empty && cell >= 3.1) {
-        const label = codeFor(bead.hex);
-        let size = Math.min(cell * 0.38, 3.2);
-        sheet.ctx.textAlign = "center";
-        sheet.ctx.textBaseline = "middle";
-        sheet.ctx.font = `700 ${size}px ${FONT}`;
-        while (size > 1.4 && sheet.ctx.measureText(label).width > cell - 0.4) {
-          size -= 0.15;
-          sheet.ctx.font = `700 ${size}px ${FONT}`;
-        }
-        if (sheet.ctx.measureText(label).width <= cell - 0.3) {
-          sheet.ctx.fillStyle = contrastText(bead.hex);
-          sheet.ctx.fillText(label, x + cell / 2, y + cell / 2);
-        }
-      }
+      if (showCodes && !empty) drawBeadCode(sheet, codeFor(bead.hex), bead.hex, x, y, cell);
     }
   }
 
-  const stroke = (stepMatch: (global: number) => boolean, color: string, width: number) => {
+  const boldCols = new Set(boldGuideOffsets(boardCols));
+  const boldRows = new Set(boldGuideOffsets(boardRows));
+  const stroke = (kind: "all" | "bold", color: string, width: number) => {
     sheet.ctx.strokeStyle = color;
     sheet.ctx.lineWidth = width;
     sheet.ctx.beginPath();
     for (let col = col0; col <= col1; col++) {
-      if (!stepMatch(col) && col !== col0 && col !== col1) continue;
-      const x = originX + (col - col0) * cell;
+      const local = col - col0;
+      if (kind === "bold" && !boldCols.has(local)) continue;
+      const x = originX + local * cell;
       sheet.ctx.moveTo(x, originY);
       sheet.ctx.lineTo(x, originY + boardRows * cell);
     }
     for (let row = row0; row <= row1; row++) {
-      if (!stepMatch(row) && row !== row0 && row !== row1) continue;
-      const y = originY + (row - row0) * cell;
+      const local = row - row0;
+      if (kind === "bold" && !boldRows.has(local)) continue;
+      const y = originY + local * cell;
       sheet.ctx.moveTo(originX, y);
       sheet.ctx.lineTo(originX + boardCols * cell, y);
     }
     sheet.ctx.stroke();
   };
-  stroke(() => true, "rgba(42,36,32,0.12)", 0.08);
-  stroke((index) => index % 5 === 0, "rgba(42,36,32,0.75)", 0.35);
+  stroke("all", "rgba(42,36,32,0.12)", 0.08);
+  stroke("bold", "rgba(42,36,32,0.75)", 0.35);
   sheet.ctx.strokeStyle = "#2A2420";
   sheet.ctx.lineWidth = 0.4;
   sheet.ctx.strokeRect(originX, originY, boardCols * cell, boardRows * cell);
@@ -280,18 +404,21 @@ function drawAxes(
   sheet.ctx.textBaseline = "middle";
   const size = Math.min(2.6, cell * 0.55);
   sheet.ctx.font = `600 ${size}px ${FONT}`;
-  const mark = (index: number, edge: boolean) => edge || (index + 1) % 5 === 0 || index === 0;
+  const columns = new Set(boardAxisNumbers(col1 - col0));
+  const rows = new Set(boardAxisNumbers(row1 - row0));
   for (let col = col0; col < col1; col++) {
-    if (!mark(col, col === col1 - 1)) continue;
-    const x = originX + (col - col0) * cell + cell / 2;
-    if (cell < 2.4 && (col + 1) % 5 !== 0) continue;
-    sheet.ctx.fillText(String(col + 1), x, originY - 3.2);
+    const number = col - col0 + 1;
+    if (!columns.has(number)) continue;
+    if (cell < 2.4 && number % 5 !== 0) continue;
+    const x = originX + (number - 1) * cell + cell / 2;
+    sheet.ctx.fillText(String(number), x, originY - 3.2);
   }
   for (let row = row0; row < row1; row++) {
-    if (!mark(row, row === row1 - 1)) continue;
-    const y = originY + (row - row0) * cell + cell / 2;
-    if (cell < 2.4 && (row + 1) % 5 !== 0) continue;
-    sheet.ctx.fillText(String(row + 1), originX - 4.2, y);
+    const number = row - row0 + 1;
+    if (!rows.has(number)) continue;
+    if (cell < 2.4 && number % 5 !== 0) continue;
+    const y = originY + (number - 1) * cell + cell / 2;
+    sheet.ctx.fillText(String(number), originX - 4.2, y);
   }
 }
 
@@ -327,6 +454,7 @@ export function legendCapacity(page: { w: number; h: number }, top: number, rowH
 }
 
 function renderOverview(
+  sheet: Sheet,
   grid: GridCell[][],
   boards: BoardSlice[],
   legend: LegendItem[],
@@ -334,8 +462,8 @@ function renderOverview(
   subtitle: string,
   pageIndex: number,
   pageCount: number,
-): { canvas: HTMLCanvasElement; shown: number } {
-  const sheet = new Sheet(page.w, page.h, 140 / 25.4);
+): number {
+  sheet.clear();
   sheet.text("拼豆图纸", MARGIN, 12, 8, "#2A2420", 700);
   sheet.text(subtitle, MARGIN, 20, 3.3, "#6E645C", 500);
   const contentW = page.w - MARGIN * 2;
@@ -376,26 +504,27 @@ function renderOverview(
   sheet.text(`采购清单 · ${legend.length} 色`, MARGIN, legendTop + 2, 3.6, "#2A2420", 700);
   drawLegend(sheet, shown, MARGIN, legendTop + 5, contentW, LEGEND_ROW);
   drawPageNumber(sheet, pageIndex, pageCount);
-  return { canvas: sheet.canvas, shown: shown.length };
+  return shown.length;
 }
 
 function renderLegendPage(
+  sheet: Sheet,
   items: LegendItem[],
   page: { w: number; h: number },
   title: string,
   pageIndex: number,
   pageCount: number,
-): { canvas: HTMLCanvasElement; shown: number } {
-  const sheet = new Sheet(page.w, page.h, 140 / 25.4);
+) {
+  sheet.clear();
   sheet.text(title, MARGIN, 12, 6, "#2A2420", 700);
   const capacity = legendCapacity(page, 20);
   const shown = items.slice(0, capacity);
   drawLegend(sheet, shown, MARGIN, 18, page.w - MARGIN * 2, LEGEND_ROW);
   drawPageNumber(sheet, pageIndex, pageCount);
-  return { canvas: sheet.canvas, shown: shown.length };
 }
 
 function renderBoardPage(
+  sheet: Sheet,
   grid: GridCell[][],
   board: BoardSlice,
   boards: BoardSlice[],
@@ -405,8 +534,8 @@ function renderBoardPage(
   codeFor: (hex: string) => string,
   pageIndex: number,
   pageCount: number,
-): HTMLCanvasElement {
-  const sheet = new Sheet(page.w, page.h, 140 / 25.4);
+) {
+  sheet.clear();
   const boardRows = board.row1 - board.row0;
   const boardCols = board.col1 - board.col0;
   const cells: GridCell[] = [];
@@ -429,13 +558,7 @@ function renderBoardPage(
   const originY = MARGIN + HEADER + AXIS;
 
   sheet.text(board.label, MARGIN, MARGIN + 5, 7, "#2A2420", 700);
-  sheet.text(
-    `总览第 ${board.boardRow + 1} 行第 ${board.boardCol + 1} 列 · 全局行 ${board.row0 + 1}–${board.row1} · 列 ${board.col0 + 1}–${board.col1}`,
-    MARGIN + 16,
-    MARGIN + 5.2,
-    3.1,
-    "#6E645C",
-  );
+  sheet.text(boardPageHeader(board), MARGIN + 16, MARGIN + 5.2, 3.1, "#6E645C");
   const note = scaledDown && scale !== "fit"
     ? `已按页面缩放（${scale}mm 放不下）`
     : scale === "fit"
@@ -461,7 +584,6 @@ function renderBoardPage(
   );
   drawLegend(sheet, shown, MARGIN, legendTop + 5, page.w - MARGIN * 2, LEGEND_ROW);
   drawPageNumber(sheet, pageIndex, pageCount);
-  return sheet.canvas;
 }
 
 export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> {
@@ -474,8 +596,8 @@ export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> 
   const page = paperSize(options.paper);
   const legend = legendOf(grid.flat(), options.codeFor);
   const subtitle = `${cols}×${rows} · ${options.systemLabel} · ${options.paletteLabel} · ${options.total} 颗 · ${legend.length} 色 · 分板 ${options.boardSize}`;
-  const probe = renderOverview(grid, boards, legend, page, subtitle, 1, 1);
-  const firstLegend = probe.shown;
+  const sheet = new Sheet(page.w, page.h, PDF_PX_PER_MM);
+  const firstLegend = renderOverview(sheet, grid, boards, legend, page, subtitle, 1, 1);
   const rest: LegendItem[][] = [];
   let cursor = firstLegend;
   while (cursor < legend.length) {
@@ -484,23 +606,24 @@ export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> 
     cursor += capacity;
   }
   const pageCount = 1 + rest.length + boards.length;
-  const canvases: HTMLCanvasElement[] = [
-    renderOverview(grid, boards, legend, page, subtitle, 1, pageCount).canvas,
-  ];
-  rest.forEach((items, index) => {
-    canvases.push(renderLegendPage(items, page, "采购清单（续）", canvases.length + 1, pageCount).canvas);
-  });
-  boards.forEach((board) => {
-    canvases.push(
-      renderBoardPage(grid, board, boards, page, options.showCodes, options.scale, options.codeFor, canvases.length + 1, pageCount),
-    );
-  });
-  if (canvases.length !== pageCount) throw new Error("分页数量不一致");
   const doc = new jsPDF({ unit: "mm", format: options.paper === "letter" ? "letter" : "a4", compress: true });
   doc.viewerPreferences({ PrintScaling: "None" });
-  canvases.forEach((canvas, index) => {
-    if (index > 0) doc.addPage();
-    doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, page.w, page.h, undefined, "FAST");
+  let drawn = 0;
+  const commit = () => {
+    if (drawn > 0) doc.addPage();
+    doc.addImage(sheet.canvas.toDataURL("image/png"), "PNG", 0, 0, page.w, page.h, undefined, "FAST");
+    drawn += 1;
+  };
+  renderOverview(sheet, grid, boards, legend, page, subtitle, 1, pageCount);
+  commit();
+  rest.forEach((items) => {
+    renderLegendPage(sheet, items, page, "采购清单（续）", drawn + 1, pageCount);
+    commit();
   });
+  boards.forEach((board) => {
+    renderBoardPage(sheet, grid, board, boards, page, options.showCodes, options.scale, options.codeFor, drawn + 1, pageCount);
+    commit();
+  });
+  if (drawn !== pageCount) throw new Error("分页数量不一致");
   doc.save(`拼豆分板-${cols}x${rows}-${options.boardSize}-${options.systemLabel}.pdf`);
 }

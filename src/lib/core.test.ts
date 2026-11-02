@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { boardPitch, boardsForPitch, legendCapacity, planBoards, preferredScale } from "./boardPdf";
+import {
+  PDF_DPI,
+  boardAxisNumbers,
+  boardChipLabel,
+  boardPageHeader,
+  boardPitch,
+  boardsForPitch,
+  boldGuideOffsets,
+  fitBeadCode,
+  legendCapacity,
+  parsePdfPrefs,
+  planBoards,
+  preferredScale,
+  serializePdfPrefs,
+} from "./boardPdf";
 import { getColorByHex, getPalette } from "./palette";
 import { buildPattern, remapColor, removeBorderBackground, tally } from "./pixelate";
 
@@ -163,6 +177,51 @@ describe("board splitting", () => {
     expect(preferredScale(52, "letter")).toBe("2.6");
     expect(preferredScale(29, "a4")).toBe("5");
     expect(preferredScale(58, "a4")).toBe("fit");
+  });
+});
+
+describe("per-board guides", () => {
+  it("restarts bold lines and numbers at each board edge and keeps the global range in the header", () => {
+    const boards = planBoards(58, 58, 29);
+    const second = boards[2];
+    expect(second.label).toBe("B1");
+    expect(boardPageHeader(second)).toContain("全局行 30–58");
+    expect(boardPageHeader(second)).toContain("列 1–29");
+    expect(boldGuideOffsets(29)).toEqual([5, 10, 15, 20, 25]);
+    expect(boardAxisNumbers(29)).toEqual([1, 5, 10, 15, 20, 25, 29]);
+    expect(boardAxisNumbers(second.row1 - second.row0)).toEqual(boardAxisNumbers(29));
+    expect(boardAxisNumbers(second.row1 - second.row0)).not.toContain(30);
+    expect(boldGuideOffsets(52)).toEqual([5, 10, 15, 20, 25, 30, 35, 40, 45, 50]);
+    expect(boardAxisNumbers(52)).toEqual([1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 52]);
+    expect(boardAxisNumbers(19)).toEqual([1, 5, 10, 15, 19]);
+  });
+});
+
+describe("small 1:1 codes", () => {
+  it("keeps a short code inside a 2.6mm cell and abbreviates a long one", () => {
+    const mini = fitBeadCode("A26", 2.6);
+    expect(mini?.text).toBe("A26");
+    expect(mini && mini.size).toBeGreaterThanOrEqual(0.7);
+    expect(mini && mini.size).toBeLessThan(2.6);
+    expect(fitBeadCode("A26", 5)?.text).toBe("A26");
+    const long = fitBeadCode("ABCDEFGH", 2.6);
+    expect(long).not.toBeNull();
+    expect(long && long.text.length).toBeLessThan(8);
+    expect(fitBeadCode("A26", 1.2)).toBeNull();
+    expect(PDF_DPI).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe("export preferences", () => {
+  it("remembers pitch, board, paper, and scale", () => {
+    const raw = serializePdfPrefs({ pitch: "2.6", board: 52, paper: "a4", scale: "2.6" });
+    expect(parsePdfPrefs(raw)).toEqual({ pitch: "2.6", board: 52, paper: "a4", scale: "2.6" });
+    expect(parsePdfPrefs(JSON.stringify({ board: 50, paper: "letter", scale: "5" }))?.scale).toBe("2.6");
+    expect(parsePdfPrefs("{")).toBeNull();
+    expect(boardChipLabel(58)).toBe("58 仅支持缩放打印");
+    expect(boardChipLabel(87)).toBe("87 仅支持缩放打印");
+    expect(boardChipLabel(29)).toBe("29 板");
+    expect(boardChipLabel(50)).toBe("50 板");
   });
 });
 

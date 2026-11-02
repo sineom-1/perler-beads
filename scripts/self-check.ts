@@ -1,4 +1,4 @@
-import { boardPitch, legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
+import { PDF_DPI, boardAxisNumbers, boardPageHeader, boardPitch, boldGuideOffsets, fitBeadCode, legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
@@ -141,6 +141,15 @@ async function main() {
   if (perPage < 60) throw new Error(`采购清单每页容量过小 ${perPage}`);
   if (Math.ceil(180 / perPage) < 2) throw new Error("多色采购清单应分成多页");
 
+  const sheets = planBoards(58, 58, 29);
+  const header = boardPageHeader(sheets[2]);
+  if (!header.includes("全局行 30–58") || !header.includes("列 1–29")) {
+    throw new Error(`分板页眉应保留全局范围 ${header}`);
+  }
+  if (boardAxisNumbers(sheets[2].row1 - sheets[2].row0).includes(30) || boldGuideOffsets(29)[0] !== 5) {
+    throw new Error("加粗线和坐标应从每块板自己的边缘重新计数");
+  }
+  if (!fitBeadCode("A26", 2.6) || PDF_DPI < 200) throw new Error("2.6mm 1:1 应能放下色号，且页面至少 200dpi");
   const wide = planBoards(30, 60, 58);
   if (wide.length !== 2 || wide[1].col1 - wide[1].col0 !== 2) {
     throw new Error("58 分板应保留右侧不足一块的窄板");
