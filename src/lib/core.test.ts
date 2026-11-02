@@ -7,14 +7,16 @@ import {
   boardPitch,
   boardsForPitch,
   boldGuideOffsets,
+  MIN_CODE_FONT_MM,
   fitBeadCode,
+  stripCodePadding,
   legendCapacity,
   parsePdfPrefs,
   planBoards,
   preferredScale,
   serializePdfPrefs,
 } from "./boardPdf";
-import { getColorByHex, getPalette } from "./palette";
+import { COLOR_SYSTEMS, displayCode, getAllColors, getColorByHex, getPalette } from "./palette";
 import { buildPattern, remapColor, removeBorderBackground, tally } from "./pixelate";
 
 function image(width: number, height: number, paint: (x: number, y: number) => [number, number, number]) {
@@ -198,16 +200,40 @@ describe("per-board guides", () => {
 });
 
 describe("small 1:1 codes", () => {
-  it("keeps a short code inside a 2.6mm cell and abbreviates a long one", () => {
-    const mini = fitBeadCode("A26", 2.6);
-    expect(mini?.text).toBe("A26");
-    expect(mini && mini.size).toBeGreaterThanOrEqual(0.7);
-    expect(mini && mini.size).toBeLessThan(2.6);
-    expect(fitBeadCode("A26", 5)?.text).toBe("A26");
-    const long = fitBeadCode("ABCDEFGH", 2.6);
-    expect(long).not.toBeNull();
-    expect(long && long.text.length).toBeLessThan(8);
-    expect(fitBeadCode("A26", 1.2)).toBeNull();
+  it("never truncates a code into a different palette code", () => {
+    const colliding = new Set(["A26", "A2", "A", "109", "10", "1", "A01", "A1", "T01"]);
+    const a26 = fitBeadCode("A26", 2.6, colliding);
+    const narrowA26 = fitBeadCode("A26", 1.8, colliding);
+    const numeric = fitBeadCode("109", 2.6, colliding);
+    const narrowNumeric = fitBeadCode("109", 1.8, colliding);
+    expect(a26).toMatchObject({ kind: "text", text: "A26" });
+    expect(narrowA26).toEqual({ kind: "dot" });
+    expect(numeric).toMatchObject({ kind: "text", text: "109" });
+    expect(narrowNumeric).toEqual({ kind: "dot" });
+    expect(fitBeadCode("A01", 1.8, colliding)).toEqual({ kind: "dot" });
+
+    const open = new Set(["A01", "A26"]);
+    const shortened = fitBeadCode("A01", 1.8, open);
+    expect(shortened).toMatchObject({ kind: "text", text: "A1" });
+    expect(stripCodePadding("A01")).toBe("A1");
+    expect(stripCodePadding("A26")).toBeNull();
+    expect(stripCodePadding("109")).toBeNull();
+
+    for (const system of COLOR_SYSTEMS) {
+      const codes = new Set(getAllColors().map((color) => displayCode(color.hex, system)));
+      for (const code of codes) {
+        for (const cell of [1.8, 2.6, 5]) {
+          const fitted = fitBeadCode(code, cell, codes);
+          expect(fitted).not.toBeNull();
+          if (!fitted || fitted.kind === "dot") continue;
+          expect(fitted.size).toBeGreaterThanOrEqual(MIN_CODE_FONT_MM);
+          const unpadded = stripCodePadding(code);
+          expect(fitted.text === code || fitted.text === unpadded).toBe(true);
+          if (fitted.text !== code) expect(codes.has(fitted.text)).toBe(false);
+          expect(fitted.text.startsWith(code.slice(0, fitted.text.length)) && fitted.text !== code).toBe(false);
+        }
+      }
+    }
     expect(PDF_DPI).toBeGreaterThanOrEqual(200);
   });
 });

@@ -83,6 +83,8 @@ export interface BoardPdfOptions {
   paper: PdfPaper;
   scale: PdfScale;
   codeFor: (hex: string) => string;
+  /** Every display code in the active brand, used to reject unsafe abbreviations. */
+  paletteCodes?: readonly string[];
 }
 
 const MARGIN = 10;
@@ -174,15 +176,25 @@ export function serializePdfPrefs(prefs: PdfExportPrefs): string {
 export const PDF_DPI = 200;
 export const PDF_PX_PER_MM = PDF_DPI / 25.4;
 
-function codeCandidates(code: string): string[] {
+/** Smallest bead-code font that stays legible at 1:1. Below this, draw a dot instead of text. */
+export const MIN_CODE_FONT_MM = 1;
+
+export type FittedBeadCode = { kind: "text"; text: string; size: number } | { kind: "dot" };
+
+/** A01 -> A1. Returns null when the code has no zero padding to remove. */
+export function stripCodePadding(code: string): string | null {
   const full = code.trim();
-  if (!full) return [];
-  const candidates = [full];
   const unpadded = full.replace(/^([A-Za-z]+)0+(\d+)$/, "$1$2");
-  if (unpadded !== full) candidates.push(unpadded);
-  if (full.length > 3) candidates.push(full.slice(0, 3));
-  if (full.length > 2) candidates.push(full.slice(0, 2));
-  return [...new Set(candidates)];
+  return unpadded !== full ? unpadded : null;
+}
+
+function collidesWithPalette(label: string, original: string, paletteCodes: ReadonlySet<string>): boolean {
+  const upper = label.toUpperCase();
+  for (const code of paletteCodes) {
+    if (code === original) continue;
+    if (code === label || code.toUpperCase() === upper) return true;
+  }
+  return false;
 }
 
 function estimateTextWidth(text: string, size: number): number {
@@ -191,21 +203,30 @@ function estimateTextWidth(text: string, size: number): number {
   return width;
 }
 
-/** Fit a bead code into a cell, shrinking the font and then abbreviating. */
-export function fitBeadCode(code: string, cellMm: number): { text: string; size: number } | null {
-  if (!(cellMm >= 1.6)) return null;
-  const minSize = cellMm < 3.1 ? 0.7 : 1.15;
+/**
+ * Fit a bead code into a cell. The only abbreviation is stripping zero-padding
+ * (A01 -> A1), and only when that shorter form is not some other code in the
+ * same brand. Otherwise the cell gets a dot and the legend carries the code.
+ */
+export function fitBeadCode(code: string, cellMm: number, paletteCodes: ReadonlySet<string> = new Set()): FittedBeadCode | null {
+  const full = code.trim();
+  if (!full || !(cellMm > 0)) return null;
+  const labels = [full];
+  const unpadded = stripCodePadding(full);
+  if (unpadded && !collidesWithPalette(unpadded, full, paletteCodes)) labels.push(unpadded);
   const maxWidth = Math.max(0.4, cellMm - 0.22);
-  for (const text of codeCandidates(code)) {
-    let size = Math.min(cellMm * 0.46, 3.2);
-    while (estimateTextWidth(text, size) > maxWidth && size > minSize) {
+  const heightCap = cellMm * 0.72;
+  if (heightCap < MIN_CODE_FONT_MM) return { kind: "dot" };
+  for (const text of labels) {
+    let size = Math.min(heightCap, 3.2);
+    while (estimateTextWidth(text, size) > maxWidth && size > MIN_CODE_FONT_MM) {
       size = Math.round((size - 0.05) * 100) / 100;
     }
-    if (estimateTextWidth(text, size) <= maxWidth + 0.01 && size >= minSize - 0.001) {
-      return { text, size };
+    if (size + 0.001 >= MIN_CODE_FONT_MM && estimateTextWidth(text, size) <= maxWidth + 0.01) {
+      return { kind: "text", text, size };
     }
   }
-  return null;
+  return { kind: "dot" };
 }
 
 function orient(grid: GridCell[][], mirror: boolean): GridCell[][] {
@@ -306,31 +327,41 @@ function drawLegend(sheet: Sheet, items: LegendItem[], x: number, y: number, wid
   });
 }
 
-function drawBeadCode(sheet: Sheet, code: string, hex: string, x: number, y: number, cell: number) {
-  const fitted = fitBeadCode(code, cell);
-  if (!fitted) return;
-  const maxWidth = Math.max(0.4, cell - 0.22);
-  let { text, size } = fitted;
-  sheet.ctx.textAlign = "center";
-  sheet.ctx.textBaseline = "middle";
-  const measure = (label: string, fontSize: number) => {
-    sheet.ctx.font = `700 ${fontSize}px ${FONT}`;
-    return sheet.ctx.measureText(label).width;
-  };
-  while (size > 0.65 && measure(text, size) > maxWidth) size = Math.round((size - 0.05) * 100) / 100;
-  if (measure(text, size) > maxWidth) {
-    const shorter = codeCandidates(code).find((label) => label.length < text.length && measure(label, size) <= maxWidth);
-    if (!shorter) return;
-    text = shorter;
-  }
+function drawCodeDot(sheet: Sheet, fill: string, cx: number, cy: number, cell: number) {
+  const radius = Math.min(0.42, Math.max(0.22, cell * 0.16));
+  sheet.ctx.beginPath();
+  sheet.ctx.fillStyle = fill;
+  sheet.ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  sheet.ctx.fill();
+}
+
+function drawBeadCode(sheet: Sheet, code: string, hex: string, x: number, y: number, cell: number, paletteCodes: ReadonlySet<string>) {
+  const fitted = fitBeadCode(code, cell, paletteCodes);
   const fill = contrastText(hex);
   const cx = x + cell / 2;
   const cy = y + cell / 2;
+  if (!fitted || fitted.kind === "dot") {
+    if (fitted) drawCodeDot(sheet, fill, cx, cy, cell);
+    return;
+  }
+  const maxWidth = Math.max(0.4, cell - 0.22);
+  let size = fitted.size;
+  sheet.ctx.textAlign = "center";
+  sheet.ctx.textBaseline = "middle";
+  const measure = () => {
+    sheet.ctx.font = `700 ${size}px ${FONT}`;
+    return sheet.ctx.measureText(fitted.text).width;
+  };
+  while (size > MIN_CODE_FONT_MM && measure() > maxWidth) size = Math.round((size - 0.05) * 100) / 100;
+  if (measure() > maxWidth || size + 0.001 < MIN_CODE_FONT_MM) {
+    drawCodeDot(sheet, fill, cx, cy, cell);
+    return;
+  }
   sheet.ctx.lineWidth = Math.max(0.12, size * 0.14);
   sheet.ctx.strokeStyle = fill === "#ffffff" ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.85)";
-  sheet.ctx.strokeText(text, cx, cy);
+  sheet.ctx.strokeText(fitted.text, cx, cy);
   sheet.ctx.fillStyle = fill;
-  sheet.ctx.fillText(text, cx, cy);
+  sheet.ctx.fillText(fitted.text, cx, cy);
 }
 
 function drawPattern(
@@ -345,6 +376,7 @@ function drawPattern(
   col1: number,
   showCodes: boolean,
   codeFor: (hex: string) => string,
+  paletteCodes: ReadonlySet<string>,
 ) {
   const boardRows = row1 - row0;
   const boardCols = col1 - col0;
@@ -356,7 +388,7 @@ function drawPattern(
       const empty = !bead || bead.isExternal || bead.key === "ERASE";
       sheet.ctx.fillStyle = empty ? "#F7F2EB" : bead.hex;
       sheet.ctx.fillRect(x, y, cell, cell);
-      if (showCodes && !empty) drawBeadCode(sheet, codeFor(bead.hex), bead.hex, x, y, cell);
+      if (showCodes && !empty) drawBeadCode(sheet, codeFor(bead.hex), bead.hex, x, y, cell, paletteCodes);
     }
   }
 
@@ -476,7 +508,7 @@ function renderOverview(
   const gridH = rows * cell;
   const originX = MARGIN + (contentW - gridW) / 2;
   const originY = thumbTop;
-  drawPattern(sheet, grid, originX, originY, cell, 0, rows, 0, cols, false, () => "");
+  drawPattern(sheet, grid, originX, originY, cell, 0, rows, 0, cols, false, () => "", new Set());
   sheet.ctx.strokeStyle = "rgba(232,112,79,0.9)";
   sheet.ctx.lineWidth = 0.45;
   boards.forEach((board) => {
@@ -532,6 +564,7 @@ function renderBoardPage(
   showCodes: boolean,
   scale: PdfScale,
   codeFor: (hex: string) => string,
+  paletteCodes: ReadonlySet<string>,
   pageIndex: number,
   pageCount: number,
 ) {
@@ -568,7 +601,7 @@ function renderBoardPage(
   drawOverviewMap(sheet, boards, board, page.w - MARGIN - 20, MARGIN + 8, 16);
 
   drawAxes(sheet, originX, originY, cell, board.row0, board.row1, board.col0, board.col1);
-  drawPattern(sheet, grid, originX, originY, cell, board.row0, board.row1, board.col0, board.col1, showCodes, codeFor);
+  drawPattern(sheet, grid, originX, originY, cell, board.row0, board.row1, board.col0, board.col1, showCodes, codeFor, paletteCodes);
 
   const legendTop = originY + boardRows * cell + 4;
   const capacity = legendCapacity(page, legendTop + 5);
@@ -596,6 +629,7 @@ export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> 
   const page = paperSize(options.paper);
   const legend = legendOf(grid.flat(), options.codeFor);
   const subtitle = `${cols}×${rows} · ${options.systemLabel} · ${options.paletteLabel} · ${options.total} 颗 · ${legend.length} 色 · 分板 ${options.boardSize}`;
+  const paletteCodes = new Set(options.paletteCodes ?? []);
   const sheet = new Sheet(page.w, page.h, PDF_PX_PER_MM);
   const firstLegend = renderOverview(sheet, grid, boards, legend, page, subtitle, 1, 1);
   const rest: LegendItem[][] = [];
@@ -621,7 +655,7 @@ export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> 
     commit();
   });
   boards.forEach((board) => {
-    renderBoardPage(sheet, grid, board, boards, page, options.showCodes, options.scale, options.codeFor, drawn + 1, pageCount);
+    renderBoardPage(sheet, grid, board, boards, page, options.showCodes, options.scale, options.codeFor, paletteCodes, drawn + 1, pageCount);
     commit();
   });
   if (drawn !== pageCount) throw new Error("分页数量不一致");

@@ -149,7 +149,11 @@ async function main() {
   if (boardAxisNumbers(sheets[2].row1 - sheets[2].row0).includes(30) || boldGuideOffsets(29)[0] !== 5) {
     throw new Error("加粗线和坐标应从每块板自己的边缘重新计数");
   }
-  if (!fitBeadCode("A26", 2.6) || PDF_DPI < 200) throw new Error("2.6mm 1:1 应能放下色号，且页面至少 200dpi");
+  const a26 = fitBeadCode("A26", 2.6, new Set(["A26", "A2", "A"]));
+  const chopped = fitBeadCode("109", 1.8, new Set(["109", "10", "1"]));
+  if (!a26 || a26.kind !== "text" || a26.text !== "A26" || chopped?.kind !== "dot" || PDF_DPI < 200) {
+    throw new Error("色号不能截断成另一个色号，且页面至少 200dpi");
+  }
   const wide = planBoards(30, 60, 58);
   if (wide.length !== 2 || wide[1].col1 - wide[1].col0 !== 2) {
     throw new Error("58 分板应保留右侧不足一块的窄板");

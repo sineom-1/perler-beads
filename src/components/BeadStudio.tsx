@@ -23,6 +23,7 @@ import {
   PALETTE_CHOICES,
   compareCodes,
   displayCode,
+  getAllColors,
   getColorByHex,
   getPalette,
   type ColorSystem,
@@ -854,6 +855,7 @@ export default function BeadStudio() {
         paper: pdfPaper,
         scale: pdfScale,
         codeFor: (hex) => displayCode(hex, colorSystem),
+        paletteCodes: getAllColors().map((color) => displayCode(color.hex, colorSystem)),
       });
     } catch (error) {
       notify(error instanceof Error ? error.message : "PDF 生成失败");
