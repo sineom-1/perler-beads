@@ -175,10 +175,14 @@ export default function BeadStudio() {
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
   const [draggingFile, setDraggingFile] = useState(false);
   const exportCanvasRef = useRef<HTMLCanvasElement>(null);
+  const exportPreviewRef = useRef<HTMLDivElement>(null);
+  const brushRef = useRef<string | null>(null);
+  const activateToolRef = useRef<(next: Tool) => void>(() => {});
   const cropDrag = useRef<{ x: number; y: number; rect: CropRect } | null>(null);
 
   excludedRef.current = excluded;
   removeBgRef.current = removeBg;
+  brushRef.current = brushHex;
 
   const notify = useCallback((text: string) => setMessage(text), []);
 
@@ -381,8 +385,8 @@ export default function BeadStudio() {
       }
       if (typing) return;
       const key = event.key.toLowerCase();
-      if (key === "b") setTool("brush");
-      if (key === "g") setTool("fill");
+      if (key === "b") activateToolRef.current("brush");
+      if (key === "g") activateToolRef.current("fill");
       if (key === "e") setTool("eraser");
       if (key === "i") setTool("pick");
     };
@@ -410,25 +414,43 @@ export default function BeadStudio() {
   }, []);
 
   useEffect(() => {
-    if (!exportOpen || !exportCanvasRef.current || !gridRef.current) return;
-    const fitted = fitView(320, 180, cols, rows, false);
-    drawViewport(exportCanvasRef.current, gridRef.current, {
-      cssWidth: 320,
-      cssHeight: 180,
-      dpr: 1,
-      zoom: fitted.zoom,
-      panX: fitted.panX,
-      panY: fitted.panY,
-      highlightHex: null,
-      shape: exportShape,
-      showGrid: exportGrid,
-      showCodes: false,
-      showBoard: true,
-      showRulers: false,
-      compare: null,
-      compareAlpha: 0,
-      codeFor: (hex) => displayCode(hex, colorSystem),
-    });
+    if (!exportOpen) return;
+    const box = exportPreviewRef.current;
+    const canvas = exportCanvasRef.current;
+    const current = gridRef.current;
+    if (!box || !canvas || !current?.[0]) return;
+    const draw = () => {
+      const bounds = box.getBoundingClientRect();
+      const cssWidth = Math.max(160, Math.floor(bounds.width));
+      const cssHeight = Math.max(160, Math.floor(bounds.height));
+      const fitted = fitView(cssWidth, cssHeight, current[0].length, current.length, false, {
+        top: 12,
+        bottom: 12,
+        side: 12,
+        minZoom: 0.02,
+      });
+      drawViewport(canvas, current, {
+        cssWidth,
+        cssHeight,
+        dpr: Math.min(2, window.devicePixelRatio || 1),
+        zoom: fitted.zoom,
+        panX: fitted.panX,
+        panY: fitted.panY,
+        highlightHex: null,
+        shape: exportShape,
+        showGrid: exportGrid,
+        showCodes: false,
+        showBoard: true,
+        showRulers: false,
+        compare: null,
+        compareAlpha: 0,
+        codeFor: (hex) => displayCode(hex, colorSystem),
+      });
+    };
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(box);
+    return () => observer.disconnect();
   }, [exportOpen, grid, exportShape, exportGrid, cols, rows, colorSystem, hist]);
 
   function rememberImage(pixels: ImagePixels) {
@@ -562,6 +584,24 @@ export default function BeadStudio() {
     return hitCell(event.clientX - rect.left, event.clientY - rect.top, viewRef.current.zoom, viewRef.current.panX, viewRef.current.panY, current[0].length, current.length);
   }
 
+  function ensureBrush(): string | null {
+    if (brushRef.current && getColorByHex(brushRef.current)) return brushRef.current;
+    const top = [...counts].sort((a, b) => b.count - a.count)[0]?.hex ?? getPalette(paletteId)[0]?.hex ?? null;
+    if (!top) {
+      notify("请先选择颜色");
+      return null;
+    }
+    brushRef.current = top;
+    setBrushHex(top);
+    return top;
+  }
+
+  function activateTool(next: Tool) {
+    if ((next === "brush" || next === "fill") && !ensureBrush()) return;
+    setTool(next);
+  }
+  activateToolRef.current = activateTool;
+
   function editAt(row: number, col: number) {
     const current = gridRef.current;
     if (!current) return;
@@ -573,13 +613,15 @@ export default function BeadStudio() {
     }
     if (tool === "pick") {
       if (!cell.isExternal) {
+        brushRef.current = cell.hex;
         setBrushHex(cell.hex);
         setTool("brush");
       }
       return;
     }
     if (tool === "fill") {
-      const color = brushHex ? getColorByHex(brushHex) : undefined;
+      const hex = ensureBrush();
+      const color = hex ? getColorByHex(hex) : undefined;
       if (!color) return;
       pushUndo(cloneGrid(current));
       applyGrid(floodFillPaint(current, row, col, color));
@@ -597,7 +639,8 @@ export default function BeadStudio() {
       return;
     }
     if (tool === "brush") {
-      const color = brushHex ? getColorByHex(brushHex) : undefined;
+      const hex = ensureBrush();
+      const color = hex ? getColorByHex(hex) : undefined;
       if (!color || (!cell.isExternal && cell.hex === color.hex)) return;
       if (!strokeRef.current) {
         pushUndo(cloneGrid(current));
@@ -898,7 +941,15 @@ export default function BeadStudio() {
                   type="button"
                   className="color-row"
                   data-on={highlightHex === item.hex}
-                  onClick={() => setHighlightHex((current) => (current === item.hex ? null : item.hex))}
+                  onClick={() => {
+                    if (tool === "brush" || tool === "fill") {
+                      brushRef.current = item.hex;
+                      setBrushHex(item.hex);
+                      setHighlightHex(item.hex);
+                      return;
+                    }
+                    setHighlightHex((current) => (current === item.hex ? null : item.hex));
+                  }}
                 >
                   <i className="swatch" style={{ background: item.hex }} />
                   <span className="code">{code}</span>
@@ -1080,7 +1131,7 @@ export default function BeadStudio() {
           {processing && <div className="progress"><b style={{ width: `${Math.round(progress * 100)}%` }} /></div>}
           <div className="tool-pill">
             {tools.map((item) => (
-              <button key={item.id} type="button" className="icon-btn" title={item.label} data-on={tool === item.id} onClick={() => setTool(item.id)}>{item.icon}</button>
+              <button key={item.id} type="button" className="icon-btn" title={item.label} data-on={tool === item.id} onClick={() => activateTool(item.id)}>{item.icon}</button>
             ))}
             <button type="button" className="icon-btn" title="撤销" onClick={undo} disabled={undoRef.current.length === 0}><Undo2 size={16} /></button>
             <button type="button" className="icon-btn" title="重做" onClick={redo} disabled={redoRef.current.length === 0}><Redo2 size={16} /></button>
@@ -1110,8 +1161,8 @@ export default function BeadStudio() {
             <button type="button" className="icon-btn" data-on={compareHold} title="对比原图" onPointerDown={() => setCompareHold(true)} onPointerUp={() => setCompareHold(false)} onPointerLeave={() => setCompareHold(false)}><Eye size={16} /></button>
           </div>
           <div className="mini-tools mobile-only">
-            <button type="button" className="icon-btn" data-on={tool === "brush"} onClick={() => setTool("brush")}><Brush size={16} /></button>
-            <button type="button" className="icon-btn" data-on={tool === "fill"} onClick={() => setTool("fill")}><PaintBucket size={16} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "brush"} onClick={() => activateTool("brush")}><Brush size={16} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "fill"} onClick={() => activateTool("fill")}><PaintBucket size={16} /></button>
             <button type="button" className="icon-btn" data-on={tool === "pick"} onClick={() => setTool("pick")}><Pipette size={16} /></button>
             <button type="button" className="icon-btn" onClick={undo}><Undo2 size={16} /></button>
           </div>
@@ -1216,20 +1267,26 @@ export default function BeadStudio() {
       )}
       {exportOpen && (
         <div className="modal-back" onClick={() => setExportOpen(false)}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
+          <div className="modal export-modal" onClick={(event) => event.stopPropagation()}>
             <h3>导出</h3>
-            <canvas ref={exportCanvasRef} style={{ width: 320, height: 180, borderRadius: 12, background: "var(--canvas)" }} />
-            <div className="chips" style={{ margin: "12px 0" }}>
-              <button type="button" className="chip" data-on={exportCodes} onClick={() => setExportCodes((value) => !value)}>显示色号</button>
-              <button type="button" className="chip" data-on={exportGrid} onClick={() => setExportGrid((value) => !value)}>网格线</button>
-              <button type="button" className="chip" data-on={exportCoords} onClick={() => setExportCoords((value) => !value)}>坐标</button>
-              <button type="button" className="chip" data-on={exportShape === "round"} onClick={() => setExportShape((value) => (value === "round" ? "square" : "round"))}>{exportShape === "round" ? "圆豆" : "方格"}</button>
-              <button type="button" className="chip" data-on={exportMirror} onClick={() => setExportMirror((value) => !value)}>镜像</button>
-            </div>
-            <div className="inline">
-              <button type="button" className="primary" onClick={downloadPattern}>下载图纸 PNG</button>
-              <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
-              <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
+            <div className="export-layout">
+              <div className="export-preview" ref={exportPreviewRef}>
+                <canvas ref={exportCanvasRef} />
+              </div>
+              <div className="export-options">
+                <div className="chips">
+                  <button type="button" className="chip" data-on={exportCodes} onClick={() => setExportCodes((value) => !value)}>显示色号</button>
+                  <button type="button" className="chip" data-on={exportGrid} onClick={() => setExportGrid((value) => !value)}>网格线</button>
+                  <button type="button" className="chip" data-on={exportCoords} onClick={() => setExportCoords((value) => !value)}>坐标</button>
+                  <button type="button" className="chip" data-on={exportShape === "round"} onClick={() => setExportShape((value) => (value === "round" ? "square" : "round"))}>{exportShape === "round" ? "圆豆" : "方格"}</button>
+                  <button type="button" className="chip" data-on={exportMirror} onClick={() => setExportMirror((value) => !value)}>镜像</button>
+                </div>
+                <div className="export-actions">
+                  <button type="button" className="primary" onClick={downloadPattern}>下载图纸 PNG</button>
+                  <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
+                  <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

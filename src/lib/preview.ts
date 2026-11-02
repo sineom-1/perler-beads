@@ -43,12 +43,12 @@ export function fitView(
   cols: number,
   rows: number,
   showRulers: boolean,
-  inset = { top: 64, bottom: 72, side: 16 },
+  inset: { top: number; bottom: number; side: number; minZoom?: number } = { top: 64, bottom: 72, side: 16, minZoom: 0.25 },
 ) {
   const ruler = showRulers ? RULER : 0;
   const availW = Math.max(40, cssWidth - ruler - inset.side * 2);
   const availH = Math.max(40, cssHeight - ruler - inset.top - inset.bottom);
-  const zoom = Math.min(8, Math.max(0.25, Math.min(availW / (cols * BASE_CELL), availH / (rows * BASE_CELL))));
+  const zoom = Math.min(8, Math.max(inset.minZoom ?? 0.25, Math.min(availW / (cols * BASE_CELL), availH / (rows * BASE_CELL))));
   const cell = BASE_CELL * zoom;
   return {
     zoom,
