@@ -13,6 +13,7 @@ import {
   displayCode,
   getColorByHex,
   getPalette,
+  paletteForMatching,
   type ColorSystem,
 } from "@/lib/palette";
 import {
@@ -132,7 +133,7 @@ export default function BeadStudio() {
   const [rows, setRows] = useState(48);
   const [lockRatio, setLockRatio] = useState(true);
   const [threshold, setThreshold] = useState(30);
-  const [paletteId, setPaletteId] = useState("168");
+  const [paletteId, setPaletteId] = useState("144");
   const [colorSystem, setColorSystem] = useState<ColorSystem>("MARD");
   const [mode, setMode] = useState<PixelMode>("dominant");
   const [metric, setMetric] = useState<DistanceMetric>("oklab");
@@ -280,7 +281,9 @@ export default function BeadStudio() {
         setProgress(0.04);
         try {
           const skip = new Set(excludedRef.current);
-          const active = getPalette(paletteId).filter((color) => !skip.has(color.hex));
+          const active = paletteForMatching(getPalette(paletteId), "MARD").filter(
+            (color) => !skip.has(color.hex) && !skip.has(color.rowHex),
+          );
           if (active.length === 0) {
             notify("可用颜色为空，请先恢复已排除的颜色。");
             return;
@@ -731,7 +734,9 @@ export default function BeadStudio() {
     const source = getColorByHex(hex);
     if (!current || !source) return;
     const skip = new Set([...excluded, hex]);
-    const targets = getPalette(paletteId).filter((color) => !skip.has(color.hex));
+    const targets = paletteForMatching(getPalette(paletteId), "MARD").filter(
+      (color) => !skip.has(color.hex) && !skip.has(color.rowHex),
+    );
     if (targets.length === 0) {
       notify("至少保留一种颜色。");
       return;

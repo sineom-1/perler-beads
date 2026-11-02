@@ -220,7 +220,10 @@ export async function buildPattern(
 ): Promise<{ grid: GridCell[][]; counts: ColorCount[]; total: number }> {
   const { width, height, data } = image;
   const { cols, rows, palette, mode, threshold, metric, onProgress, yieldEvery = 0 } = options;
-  if (palette.length === 0) throw new Error("当前色板没有可用颜色");
+  // Transparent beads such as MARD T1 are flagged. Do not detect them by hex:
+  // erased cells use the same #FFFFFF value.
+  const usable = palette.filter((color) => !color.transparent);
+  if (usable.length === 0) throw new Error("当前色板没有可用颜色");
   if (cols < 1 || rows < 1) throw new Error("网格尺寸无效");
 
   const cache = new Map<string, PaletteColor>();
@@ -228,7 +231,7 @@ export async function buildPattern(
     const id = `${rgb.r},${rgb.g},${rgb.b}`;
     const hit = cache.get(id);
     if (hit) return hit;
-    const found = findClosest(rgb, palette, metric);
+    const found = findClosest(rgb, usable, metric);
     cache.set(id, found);
     return found;
   };
@@ -262,7 +265,7 @@ export async function buildPattern(
   }
 
   onProgress?.(0.9);
-  const merged = mergeRegions(grid, palette, threshold, metric);
+  const merged = mergeRegions(grid, usable, threshold, metric);
   const totals = tally(merged);
   onProgress?.(1);
   return { grid: merged, ...totals };
@@ -340,7 +343,9 @@ export function remapColor(
   targets: PaletteColor[],
   metric: DistanceMetric,
 ): { grid: GridCell[][]; replaced: number; replacement: PaletteColor } {
-  const replacement = findClosest(source.rgb, targets, metric);
+  const usable = targets.filter((color) => !color.transparent);
+  if (usable.length === 0) throw new Error("没有可替换的颜色");
+  const replacement = findClosest(source.rgb, usable, metric);
   let replaced = 0;
   const next = grid.map((row) =>
     row.map((cell) => {

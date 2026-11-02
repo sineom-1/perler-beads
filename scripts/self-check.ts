@@ -1,5 +1,5 @@
 import { colorDistance, findClosest } from "../src/lib/color";
-import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
+import { PALETTE_CHOICES, displayCode, getColorByHex, getPalette, hasPreset, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
 
 async function main() {
@@ -16,8 +16,25 @@ async function main() {
 
   if (paletteCount("72") !== 72) throw new Error(`72 色数量 ${paletteCount("72")}`);
   if (getPalette("72").length !== 72) throw new Error("72 色板解析失败");
-  if (getPalette("168").length !== 168) throw new Error(`168 色数量 ${getPalette("168").length}`);
+  if (hasPreset("168") || PALETTE_CHOICES.some((item) => item.id === "168")) {
+    throw new Error("168 色预设应已删除");
+  }
   if (getPalette("291").length !== 291) throw new Error(`291 色数量 ${getPalette("291").length}`);
+  const p14 = getColorByHex("#337BAD");
+  if (!p14 || p14.key !== "P14" || p14.rowHex !== "#337680" || p14.hex !== "#337BAD") {
+    throw new Error(`P14 色值错误 ${p14?.key} ${p14?.hex}`);
+  }
+  if (getColorByHex("#337680")?.hex !== "#337BAD") throw new Error("旧 P14 色值应指向校正后的 MARD 色");
+  const p19 = getColorByHex("#FFDEE9");
+  if (!p19 || p19.key !== "P19" || p19.rowHex !== "#FFFEEC") throw new Error(`P19 色值错误 ${p19?.hex}`);
+  const r6 = getColorByHex("#1EBA93");
+  if (!r6 || r6.key !== "R06" || r6.rowHex !== "#238891") throw new Error(`R06 色值错误 ${r6?.hex}`);
+  if (getColorByHex("#FDFBFF")?.key !== "H01" || getColorByHex("#8AA386")?.key !== "M02") {
+    throw new Error("H1 / M2 不应改动");
+  }
+  if (displayCode("#337680", "COCO") !== "M14" || displayCode("#337BAD", "COCO") !== "M14") {
+    throw new Error("COCO 仍应落在原来的 P14 行");
+  }
   if (displayCode("#FD543D", "MARD") !== "A14") throw new Error("MARD 色号映射错误");
   if (displayCode("#FD543D", "COCO") !== "C05") throw new Error("COCO 色号映射错误");
   if (displayCode("#FD543D", "漫漫") !== "B14") throw new Error("漫漫色号映射错误");
@@ -89,14 +106,15 @@ async function main() {
     {
       cols: side,
       rows: side,
-      palette: getPalette("168"),
+      palette: getPalette("291"),
       mode: "dominant",
       threshold: 30,
       metric: "oklab",
     },
   );
   const yellow = smiley.counts.find((item) => item.key === "A26");
-  const white = smiley.counts.find((item) => item.key === "T01");
+  const white = smiley.counts.find((item) => item.key === "H02");
+  if (smiley.counts.some((item) => item.key === "T01")) throw new Error("白底不应匹配到透明豆 T01");
   if (!yellow || yellow.count !== 16 * 16) {
     throw new Error(`黄脸被吞掉了 ${yellow?.count ?? 0}`);
   }
@@ -115,7 +133,7 @@ async function main() {
       ciede2000BlackWhite: Number(blackWhite.toFixed(2)),
       ciede2000RedBlue: Number(redBlue.toFixed(2)),
       oklabRedBlue: Number(oklabRedBlue.toFixed(2)),
-      palette168: getPalette("168").length,
+      removed168: true,
       removed: removed.removed,
     }),
   );
