@@ -73,8 +73,28 @@ export interface BoardPdfOptions {
   codeFor: (hex: string) => string;
 }
 
+const MARGIN = 10;
+const FOOTER = 14;
+const HEADER = 20;
+const AXIS = 8;
+
 function paperSize(paper: PdfPaper): { w: number; h: number } {
   return paper === "letter" ? { w: 215.9, h: 279.4 } : { w: 210, h: 297 };
+}
+
+/** True when a full board of this size fits at the given pitch, including axes and the calibration ruler. */
+export function pitchFits(boardSize: number, paper: PdfPaper, pitch: number): boolean {
+  const page = paperSize(paper);
+  const availW = page.w - MARGIN * 2 - AXIS;
+  const availH = page.h - MARGIN - FOOTER - HEADER - AXIS;
+  return boardSize * pitch <= availW + 0.01 && boardSize * pitch <= availH + 0.01;
+}
+
+/** 5mm when that pitch fits, otherwise 2.6mm, otherwise shrink to the page. */
+export function preferredScale(boardSize: PdfBoardSize, paper: PdfPaper): PdfScale {
+  if (pitchFits(boardSize, paper, 5)) return "5";
+  if (pitchFits(boardSize, paper, 2.6)) return "2.6";
+  return "fit";
 }
 
 function orient(grid: GridCell[][], mirror: boolean): GridCell[][] {
@@ -130,6 +150,30 @@ class Sheet {
   }
 }
 
+function drawCalibrationRuler(sheet: Sheet) {
+  const x0 = MARGIN;
+  const y = sheet.height - 7;
+  sheet.ctx.strokeStyle = "#2A2420";
+  sheet.ctx.lineWidth = 0.35;
+  sheet.ctx.beginPath();
+  sheet.ctx.moveTo(x0, y);
+  sheet.ctx.lineTo(x0 + 50, y);
+  sheet.ctx.stroke();
+  for (let mark = 0; mark <= 50; mark += 10) {
+    sheet.ctx.beginPath();
+    sheet.ctx.moveTo(x0 + mark, y);
+    sheet.ctx.lineTo(x0 + mark, y - 2.4);
+    sheet.ctx.stroke();
+    sheet.text(String(mark), x0 + mark, y + 2.3, 2.2, "#2A2420", 500, "center");
+  }
+  sheet.text("50mm", x0 + 25, y - 3.6, 2.3, "#6E645C", 500, "center");
+}
+
+function drawPageNumber(sheet: Sheet, pageIndex: number, pageCount: number) {
+  sheet.text(`${pageIndex}/${pageCount}`, sheet.width - MARGIN, sheet.height - 7, 3.4, "#2A2420", 700, "right");
+  drawCalibrationRuler(sheet);
+}
+
 function drawLegend(sheet: Sheet, items: LegendItem[], x: number, y: number, width: number, rowH: number) {
   const columns = width > 170 ? 3 : 2;
   const columnW = width / columns;
@@ -142,12 +186,6 @@ function drawLegend(sheet: Sheet, items: LegendItem[], x: number, y: number, wid
     sheet.text(item.code, left + rowH, top + rowH / 2, Math.min(3.4, rowH * 0.55), "#2A2420", 650);
     sheet.text(String(item.count), left + columnW - 2, top + rowH / 2, Math.min(3.2, rowH * 0.5), "#6E645C", 500, "right");
   });
-}
-
-function legendHeight(count: number, width: number, rowH: number) {
-  if (count === 0) return 0;
-  const columns = width > 170 ? 3 : 2;
-  return Math.ceil(count / columns) * rowH;
 }
 
 function drawPattern(
@@ -265,31 +303,40 @@ function drawOverviewMap(sheet: Sheet, boards: BoardSlice[], active: BoardSlice 
   });
 }
 
+const LEGEND_ROW = 5.2;
+
+function legendColumns(width: number) {
+  return width > 170 ? 3 : 2;
+}
+
+export function legendCapacity(page: { w: number; h: number }, top: number, rowH = LEGEND_ROW) {
+  const width = page.w - MARGIN * 2;
+  const rows = Math.max(0, Math.floor((page.h - FOOTER - top) / rowH));
+  return rows * legendColumns(width);
+}
+
 function renderOverview(
   grid: GridCell[][],
   boards: BoardSlice[],
   legend: LegendItem[],
   page: { w: number; h: number },
   subtitle: string,
-): HTMLCanvasElement {
+  pageIndex: number,
+  pageCount: number,
+): { canvas: HTMLCanvasElement; shown: number } {
   const sheet = new Sheet(page.w, page.h, 140 / 25.4);
-  const margin = 12;
-  sheet.text("拼豆图纸", margin, 14, 8, "#2A2420", 700);
-  sheet.text(subtitle, margin, 22, 3.4, "#6E645C", 500);
-  const contentW = page.w - margin * 2;
-  const rowH = legend.length > 48 ? 4.2 : 5.4;
-  const fullLegendH = legendHeight(legend.length, contentW, rowH) + 8;
-  const room = page.h - 30 - margin - 8;
-  const legendH = Math.min(fullLegendH, Math.max(24, room * 0.42));
-  const thumbTop = 30;
-  const thumbH = Math.max(60, page.h - thumbTop - legendH - margin);
+  sheet.text("拼豆图纸", MARGIN, 12, 8, "#2A2420", 700);
+  sheet.text(subtitle, MARGIN, 20, 3.3, "#6E645C", 500);
+  const contentW = page.w - MARGIN * 2;
   const rows = grid.length;
   const cols = grid[0]?.length ?? 0;
-  const cell = Math.min((contentW - 2) / cols, (thumbH - 2) / rows);
+  const thumbTop = 28;
+  const thumbBox = Math.min(118, page.h * 0.42);
+  const cell = Math.min(contentW / cols, thumbBox / rows);
   const gridW = cols * cell;
   const gridH = rows * cell;
-  const originX = margin + (contentW - gridW) / 2;
-  const originY = thumbTop + (thumbH - gridH) / 2;
+  const originX = MARGIN + (contentW - gridW) / 2;
+  const originY = thumbTop;
   drawPattern(sheet, grid, originX, originY, cell, 0, rows, 0, cols, false, () => "");
   sheet.ctx.strokeStyle = "rgba(232,112,79,0.9)";
   sheet.ctx.lineWidth = 0.45;
@@ -312,10 +359,29 @@ function renderOverview(
       sheet.ctx.strokeStyle = "rgba(232,112,79,0.9)";
     }
   });
-  const legendTop = thumbTop + thumbH;
-  sheet.text("色号", margin, legendTop + 3, 3.6, "#2A2420", 700);
-  drawLegend(sheet, legend, margin, legendTop + 6, contentW, rowH);
-  return sheet.canvas;
+  const legendTop = originY + gridH + 6;
+  const capacity = legendCapacity(page, legendTop + 6);
+  const shown = legend.slice(0, capacity);
+  sheet.text(`采购清单 · ${legend.length} 色`, MARGIN, legendTop + 2, 3.6, "#2A2420", 700);
+  drawLegend(sheet, shown, MARGIN, legendTop + 5, contentW, LEGEND_ROW);
+  drawPageNumber(sheet, pageIndex, pageCount);
+  return { canvas: sheet.canvas, shown: shown.length };
+}
+
+function renderLegendPage(
+  items: LegendItem[],
+  page: { w: number; h: number },
+  title: string,
+  pageIndex: number,
+  pageCount: number,
+): { canvas: HTMLCanvasElement; shown: number } {
+  const sheet = new Sheet(page.w, page.h, 140 / 25.4);
+  sheet.text(title, MARGIN, 12, 6, "#2A2420", 700);
+  const capacity = legendCapacity(page, 20);
+  const shown = items.slice(0, capacity);
+  drawLegend(sheet, shown, MARGIN, 18, page.w - MARGIN * 2, LEGEND_ROW);
+  drawPageNumber(sheet, pageIndex, pageCount);
+  return { canvas: sheet.canvas, shown: shown.length };
 }
 
 function renderBoardPage(
@@ -326,9 +392,10 @@ function renderBoardPage(
   showCodes: boolean,
   scale: PdfScale,
   codeFor: (hex: string) => string,
-): { canvas: HTMLCanvasElement; scaledDown: boolean } {
+  pageIndex: number,
+  pageCount: number,
+): HTMLCanvasElement {
   const sheet = new Sheet(page.w, page.h, 140 / 25.4);
-  const margin = 10;
   const boardRows = board.row1 - board.row0;
   const boardCols = board.col1 - board.col0;
   const cells: GridCell[] = [];
@@ -336,30 +403,25 @@ function renderBoardPage(
     for (let col = board.col0; col < board.col1; col++) cells.push(grid[row][col]);
   }
   const legend = legendOf(cells, codeFor);
-  const contentW = page.w - margin * 2;
-  const rowH = 5.2;
-  const legendH = legendHeight(legend.length, contentW, rowH) + 8;
-  const headerH = 16;
-  const axis = 8;
-  const availW = contentW - axis;
-  const availH = page.h - margin * 2 - headerH - axis - legendH;
+  const availW = page.w - MARGIN * 2 - AXIS;
+  const availH = page.h - MARGIN - FOOTER - HEADER - AXIS;
   const wanted = scale === "5" ? 5 : scale === "2.6" ? 2.6 : 0;
   let cell = Math.min(availW / boardCols, availH / boardRows);
   let scaledDown = scale === "fit";
-  if (wanted > 0 && boardCols * wanted <= availW + 0.1 && boardRows * wanted <= availH + 0.1) {
+  if (wanted > 0 && boardCols * wanted <= availW + 0.01 && boardRows * wanted <= availH + 0.01) {
     cell = wanted;
     scaledDown = false;
   } else if (wanted > 0) {
     scaledDown = true;
   }
-  const originX = margin + axis + Math.max(0, (availW - boardCols * cell) / 2);
-  const originY = margin + headerH + axis;
+  const originX = MARGIN + AXIS + Math.max(0, (availW - boardCols * cell) / 2);
+  const originY = MARGIN + HEADER + AXIS;
 
-  sheet.text(board.label, margin, margin + 5, 7, "#2A2420", 700);
+  sheet.text(board.label, MARGIN, MARGIN + 5, 7, "#2A2420", 700);
   sheet.text(
     `总览第 ${board.boardRow + 1} 行第 ${board.boardCol + 1} 列 · 全局行 ${board.row0 + 1}–${board.row1} · 列 ${board.col0 + 1}–${board.col1}`,
-    margin + 16,
-    margin + 5.2,
+    MARGIN + 16,
+    MARGIN + 5.2,
     3.1,
     "#6E645C",
   );
@@ -367,17 +429,28 @@ function renderBoardPage(
     ? `已按页面缩放（${scale}mm 放不下）`
     : scale === "fit"
       ? "按页面缩放"
-      : `1:1 · ${scale}mm`;
-  sheet.text(note, page.w - margin, margin + 5.2, 3, "#A0968D", 500, "right");
-  drawOverviewMap(sheet, boards, board, page.w - margin - 22, margin + 8, 18);
+      : `1:1 · ${scale}mm · 100% 打印`;
+  sheet.text(note, page.w - MARGIN - 24, MARGIN + 5.2, 2.8, "#A0968D", 500, "right");
+  drawOverviewMap(sheet, boards, board, page.w - MARGIN - 20, MARGIN + 8, 16);
 
   drawAxes(sheet, originX, originY, cell, board.row0, board.row1, board.col0, board.col1);
   drawPattern(sheet, grid, originX, originY, cell, board.row0, board.row1, board.col0, board.col1, showCodes, codeFor);
 
   const legendTop = originY + boardRows * cell + 4;
-  sheet.text(`本板 ${legend.reduce((sum, item) => sum + item.count, 0)} 颗`, margin, legendTop + 2, 3.3, "#2A2420", 700);
-  drawLegend(sheet, legend, margin, legendTop + 4, contentW, rowH);
-  return { canvas: sheet.canvas, scaledDown };
+  const capacity = legendCapacity(page, legendTop + 5);
+  const shown = legend.slice(0, capacity);
+  const beadCount = legend.reduce((sum, item) => sum + item.count, 0);
+  sheet.text(
+    shown.length < legend.length ? `本板 ${beadCount} 颗 · 其余见采购清单` : `本板 ${beadCount} 颗`,
+    MARGIN,
+    legendTop + 2,
+    3.2,
+    "#2A2420",
+    700,
+  );
+  drawLegend(sheet, shown, MARGIN, legendTop + 5, page.w - MARGIN * 2, LEGEND_ROW);
+  drawPageNumber(sheet, pageIndex, pageCount);
+  return sheet.canvas;
 }
 
 export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> {
@@ -390,15 +463,33 @@ export async function downloadBoardPdf(options: BoardPdfOptions): Promise<void> 
   const page = paperSize(options.paper);
   const legend = legendOf(grid.flat(), options.codeFor);
   const subtitle = `${cols}×${rows} · ${options.systemLabel} · ${options.paletteLabel} · ${options.total} 颗 · ${legend.length} 色 · 分板 ${options.boardSize}`;
-  const overview = renderOverview(grid, boards, legend, page, subtitle);
-  const doc = new jsPDF({ unit: "mm", format: options.paper === "letter" ? "letter" : "a4", compress: true });
-  const place = (canvas: HTMLCanvasElement) => {
-    doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, page.w, page.h, undefined, "FAST");
-  };
-  place(overview);
+  const probe = renderOverview(grid, boards, legend, page, subtitle, 1, 1);
+  const firstLegend = probe.shown;
+  const rest: LegendItem[][] = [];
+  let cursor = firstLegend;
+  while (cursor < legend.length) {
+    const capacity = legendCapacity(page, 20);
+    rest.push(legend.slice(cursor, cursor + capacity));
+    cursor += capacity;
+  }
+  const pageCount = 1 + rest.length + boards.length;
+  const canvases: HTMLCanvasElement[] = [
+    renderOverview(grid, boards, legend, page, subtitle, 1, pageCount).canvas,
+  ];
+  rest.forEach((items, index) => {
+    canvases.push(renderLegendPage(items, page, "采购清单（续）", canvases.length + 1, pageCount).canvas);
+  });
   boards.forEach((board) => {
-    doc.addPage();
-    place(renderBoardPage(grid, board, boards, page, options.showCodes, options.scale, options.codeFor).canvas);
+    canvases.push(
+      renderBoardPage(grid, board, boards, page, options.showCodes, options.scale, options.codeFor, canvases.length + 1, pageCount),
+    );
+  });
+  if (canvases.length !== pageCount) throw new Error("分页数量不一致");
+  const doc = new jsPDF({ unit: "mm", format: options.paper === "letter" ? "letter" : "a4", compress: true });
+  doc.viewerPreferences({ PrintScaling: "None" });
+  canvases.forEach((canvas, index) => {
+    if (index > 0) doc.addPage();
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, page.w, page.h, undefined, "FAST");
   });
   doc.save(`拼豆分板-${cols}x${rows}-${options.boardSize}-${options.systemLabel}.pdf`);
 }

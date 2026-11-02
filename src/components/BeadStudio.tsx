@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Brush, Crop, Eraser, Eye, Grid3x3, Minus, PaintBucket, Pipette, Plus, Redo2, Square, Undo2 } from "lucide-react";
 import { assetUrl } from "@/lib/assets";
 import type { DistanceMetric, PixelMode } from "@/lib/color";
+import { preferredScale } from "@/lib/boardPdf";
 import { downloadCanvas, renderPatternCanvas, renderShoppingListCanvas } from "@/lib/exportPng";
 import { decodeImageFile } from "@/lib/imageFile";
 import {
@@ -167,7 +168,7 @@ export default function BeadStudio() {
   const [exportMirror, setExportMirror] = useState(false);
   const [pdfBoard, setPdfBoard] = useState<29 | 58 | 87>(29);
   const [pdfPaper, setPdfPaper] = useState<"a4" | "letter">("a4");
-  const [pdfScale, setPdfScale] = useState<"fit" | "2.6" | "5">("fit");
+  const [pdfScale, setPdfScale] = useState<"fit" | "2.6" | "5">("5");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [sheetTab, setSheetTab] = useState<SheetTab>("size");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1108,7 +1109,9 @@ export default function BeadStudio() {
         <div className="top-actions">
           <button type="button" className="ghost" onClick={() => fileRef.current?.click()}>更换图片</button>
           <button type="button" className="primary" onClick={() => {
-            setPdfBoard(cols === 58 || cols === 87 ? cols : 29);
+            const board = cols === 58 || cols === 87 ? cols : 29;
+            setPdfBoard(board);
+            setPdfScale(preferredScale(board, pdfPaper));
             setExportOpen(true);
           }}>导出</button>
         </div>
@@ -1316,15 +1319,24 @@ export default function BeadStudio() {
                 </div>
                 <div className="chips">
                   {([29, 58, 87] as const).map((size) => (
-                    <button key={size} type="button" className="chip" data-on={pdfBoard === size} onClick={() => setPdfBoard(size)}>{size} 板</button>
+                    <button key={size} type="button" className="chip" data-on={pdfBoard === size} onClick={() => {
+                      setPdfBoard(size);
+                      setPdfScale(preferredScale(size, pdfPaper));
+                    }}>{size} 板</button>
                   ))}
                 </div>
                 <div className="chips">
-                  <button type="button" className="chip" data-on={pdfPaper === "a4"} onClick={() => setPdfPaper("a4")}>A4</button>
-                  <button type="button" className="chip" data-on={pdfPaper === "letter"} onClick={() => setPdfPaper("letter")}>Letter</button>
+                  <button type="button" className="chip" data-on={pdfPaper === "a4"} onClick={() => {
+                    setPdfPaper("a4");
+                    setPdfScale(preferredScale(pdfBoard, "a4"));
+                  }}>A4</button>
+                  <button type="button" className="chip" data-on={pdfPaper === "letter"} onClick={() => {
+                    setPdfPaper("letter");
+                    setPdfScale(preferredScale(pdfBoard, "letter"));
+                  }}>Letter</button>
                   <button type="button" className="chip" data-on={pdfScale === "fit"} onClick={() => setPdfScale("fit")}>适应页面</button>
-                  <button type="button" className="chip" data-on={pdfScale === "2.6"} onClick={() => setPdfScale("2.6")}>2.6mm</button>
-                  <button type="button" className="chip" data-on={pdfScale === "5"} onClick={() => setPdfScale("5")}>5mm</button>
+                  <button type="button" className="chip" data-on={pdfScale === "2.6"} onClick={() => setPdfScale("2.6")}>2.6mm 1:1</button>
+                  <button type="button" className="chip" data-on={pdfScale === "5"} onClick={() => setPdfScale("5")}>5mm 1:1</button>
                 </div>
                 <div className="export-actions">
                   <button type="button" className="primary" onClick={downloadPattern}>下载图纸 PNG</button>

@@ -1,4 +1,4 @@
-import { planBoards } from "../src/lib/boardPdf";
+import { legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
@@ -119,6 +119,14 @@ async function main() {
   if (edge.row1 - edge.row0 !== 19 || edge.col1 - edge.col0 !== 19) {
     throw new Error("边缘板应保留不足 29 的尺寸");
   }
+  if (preferredScale(29, "a4") !== "5") throw new Error("29 板在 A4 上应默认 5mm 1:1");
+  if (!pitchFits(58, "a4", 2.6) || pitchFits(58, "a4", 5)) throw new Error("58 板在 A4 上只能放下 2.6mm");
+  if (preferredScale(58, "a4") !== "2.6") throw new Error("58 板应默认 2.6mm");
+  if (preferredScale(87, "a4") !== "fit") throw new Error("87 板在 A4 上应缩小到页面");
+  const perPage = legendCapacity({ w: 210, h: 297 }, 20);
+  if (perPage < 60) throw new Error(`采购清单每页容量过小 ${perPage}`);
+  if (Math.ceil(180 / perPage) < 2) throw new Error("多色采购清单应分成多页");
+
   const wide = planBoards(30, 60, 58);
   if (wide.length !== 2 || wide[1].col1 - wide[1].col0 !== 2) {
     throw new Error("58 分板应保留右侧不足一块的窄板");
