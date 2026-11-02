@@ -31,6 +31,10 @@ export interface PaletteColor {
   rgb: Rgb;
   oklab: Oklab;
   lab: Lab;
+  /** Shared mapping-row hex. Other brands stay on this value. */
+  rowHex: string;
+  /** Transparent beads stay in the list but are skipped by nearest-color matching. */
+  transparent: boolean;
 }
 
 export function hexToRgb(hex: string): Rgb | null {
@@ -150,12 +154,22 @@ export function ciede2000(lab1: Lab, lab2: Lab): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-export function enrichColor(color: { key: string; hex: string; rgb: Rgb }): PaletteColor {
+export function enrichColor(color: {
+  key: string;
+  hex: string;
+  rgb: Rgb;
+  rowHex?: string;
+  transparent?: boolean;
+}): PaletteColor {
+  const hex = color.hex.toUpperCase();
   return {
-    ...color,
-    hex: color.hex.toUpperCase(),
+    key: color.key,
+    hex,
+    rgb: color.rgb,
     oklab: rgbToOklab(color.rgb),
     lab: rgbToLab(color.rgb),
+    rowHex: (color.rowHex ?? hex).toUpperCase(),
+    transparent: color.transparent ?? false,
   };
 }
 
