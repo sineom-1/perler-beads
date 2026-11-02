@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { legendCapacity, planBoards } from "./boardPdf";
+import { boardPitch, boardsForPitch, legendCapacity, planBoards, preferredScale } from "./boardPdf";
 import { getColorByHex, getPalette } from "./palette";
 import { buildPattern, remapColor, removeBorderBackground, tally } from "./pixelate";
 
@@ -127,6 +127,42 @@ describe("board splitting", () => {
     expect(boards[2].row1 - boards[2].row0).toBe(19);
     expect(boards[3].col1 - boards[3].col0).toBe(19);
     expect(boards[3].row1 - boards[3].row0).toBe(19);
+  });
+
+  it("splits a 104 grid on 50-boards into 3x3 with a 4-cell edge", () => {
+    const boards = planBoards(104, 104, 50);
+    expect(boards.map((board) => board.label)).toEqual(["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]);
+    expect(boards[0].col1 - boards[0].col0).toBe(50);
+    expect(boards[0].row1 - boards[0].row0).toBe(50);
+    expect(boards[2].col1 - boards[2].col0).toBe(4);
+    expect(boards[6].row1 - boards[6].row0).toBe(4);
+    expect(boards[8].col1 - boards[8].col0).toBe(4);
+    expect(boards[8].row1 - boards[8].row0).toBe(4);
+  });
+
+  it("splits a 104 grid on 52-boards into four full boards", () => {
+    const boards = planBoards(104, 104, 52);
+    expect(boards.map((board) => board.label)).toEqual(["A1", "A2", "B1", "B2"]);
+    expect(boards.every((board) => board.col1 - board.col0 === 52 && board.row1 - board.row0 === 52)).toBe(true);
+  });
+
+  it("keeps a partial 52-board edge and prints mini boards at 2.6mm", () => {
+    const boards = planBoards(90, 70, 52);
+    expect(boards.map((board) => board.label)).toEqual(["A1", "A2", "B1", "B2"]);
+    expect(boards[1].col1 - boards[1].col0).toBe(18);
+    expect(boards[2].row1 - boards[2].row0).toBe(38);
+    expect(boards[3].col1 - boards[3].col0).toBe(18);
+    expect(boards[3].row1 - boards[3].row0).toBe(38);
+    expect(boardsForPitch("2.6")).toEqual([50, 52]);
+    expect(boardsForPitch("5")).toEqual([29, 58, 87]);
+    expect(boardPitch(50)).toBe("2.6");
+    expect(boardPitch(52)).toBe("2.6");
+    expect(boardPitch(29)).toBe("5");
+    expect(preferredScale(50, "a4")).toBe("2.6");
+    expect(preferredScale(52, "a4")).toBe("2.6");
+    expect(preferredScale(52, "letter")).toBe("2.6");
+    expect(preferredScale(29, "a4")).toBe("5");
+    expect(preferredScale(58, "a4")).toBe("fit");
   });
 });
 

@@ -9,9 +9,21 @@ import type { GridCell } from "./pixelate";
 
 const FONT = '"WenQuanYi Micro Hei", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif';
 
-export type PdfBoardSize = 29 | 58 | 87;
+/** 5mm pegboards are 29/58/87. 2.6mm mini boards are 50 or 52 and do not share that pitch. */
+export const STANDARD_BOARDS = [29, 58, 87] as const;
+export const MINI_BOARDS = [50, 52] as const;
+export type PdfBoardSize = (typeof STANDARD_BOARDS)[number] | (typeof MINI_BOARDS)[number];
 export type PdfPaper = "a4" | "letter";
 export type PdfScale = "fit" | "2.6" | "5";
+export type BeadPitch = "5" | "2.6";
+
+export function boardPitch(size: PdfBoardSize): BeadPitch {
+  return size === 50 || size === 52 ? "2.6" : "5";
+}
+
+export function boardsForPitch(pitch: BeadPitch): readonly PdfBoardSize[] {
+  return pitch === "2.6" ? MINI_BOARDS : STANDARD_BOARDS;
+}
 
 export interface BoardSlice {
   label: string;
@@ -90,11 +102,10 @@ export function pitchFits(boardSize: number, paper: PdfPaper, pitch: number): bo
   return boardSize * pitch <= availW + 0.01 && boardSize * pitch <= availH + 0.01;
 }
 
-/** 5mm when that pitch fits, otherwise 2.6mm, otherwise shrink to the page. */
+/** Native pitch for this board when a full board fits on the page, otherwise shrink to the page. */
 export function preferredScale(boardSize: PdfBoardSize, paper: PdfPaper): PdfScale {
-  if (pitchFits(boardSize, paper, 5)) return "5";
-  if (pitchFits(boardSize, paper, 2.6)) return "2.6";
-  return "fit";
+  const pitch = boardPitch(boardSize);
+  return pitchFits(boardSize, paper, pitch === "5" ? 5 : 2.6) ? pitch : "fit";
 }
 
 function orient(grid: GridCell[][], mirror: boolean): GridCell[][] {

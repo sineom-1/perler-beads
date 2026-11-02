@@ -1,4 +1,4 @@
-import { legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
+import { boardPitch, legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
@@ -119,10 +119,24 @@ async function main() {
   if (edge.row1 - edge.row0 !== 19 || edge.col1 - edge.col0 !== 19) {
     throw new Error("边缘板应保留不足 29 的尺寸");
   }
-  if (preferredScale(29, "a4") !== "5") throw new Error("29 板在 A4 上应默认 5mm 1:1");
-  if (!pitchFits(58, "a4", 2.6) || pitchFits(58, "a4", 5)) throw new Error("58 板在 A4 上只能放下 2.6mm");
-  if (preferredScale(58, "a4") !== "2.6") throw new Error("58 板应默认 2.6mm");
+  if (boardPitch(29) !== "5" || preferredScale(29, "a4") !== "5") throw new Error("29 板在 A4 上应默认 5mm 1:1");
+  if (pitchFits(58, "a4", 5) || preferredScale(58, "a4") !== "fit") throw new Error("58 是 5mm 板，A4 放不下时应缩放到页面");
   if (preferredScale(87, "a4") !== "fit") throw new Error("87 板在 A4 上应缩小到页面");
+  if (boardPitch(50) !== "2.6" || boardPitch(52) !== "2.6") throw new Error("50/52 应是 2.6mm 迷你板");
+  if (preferredScale(50, "a4") !== "2.6" || preferredScale(52, "a4") !== "2.6") {
+    throw new Error("50/52 板在 A4 上应默认 2.6mm 1:1");
+  }
+  const mini50 = planBoards(104, 104, 50);
+  if (mini50.length !== 9 || mini50[2].col1 - mini50[2].col0 !== 4) {
+    throw new Error("104 图按 50 板应分成 3×3，边缘 4 格");
+  }
+  const mini52 = planBoards(104, 104, 52);
+  if (mini52.map((board) => board.label).join(",") !== "A1,A2,B1,B2") {
+    throw new Error(`104 图按 52 板标号错误 ${mini52.map((board) => board.label).join(",")}`);
+  }
+  if (mini52.some((board) => board.col1 - board.col0 !== 52 || board.row1 - board.row0 !== 52)) {
+    throw new Error("104 图按 52 板应是四块整板");
+  }
   const perPage = legendCapacity({ w: 210, h: 297 }, 20);
   if (perPage < 60) throw new Error(`采购清单每页容量过小 ${perPage}`);
   if (Math.ceil(180 / perPage) < 2) throw new Error("多色采购清单应分成多页");
