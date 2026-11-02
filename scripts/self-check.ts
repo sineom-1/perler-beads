@@ -1,3 +1,4 @@
+import { PDF_DPI, boardAxisNumbers, boardPageHeader, boardPitch, boldGuideOffsets, fitBeadCode, legendCapacity, pitchFits, planBoards, preferredScale } from "../src/lib/boardPdf";
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
 import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
@@ -107,6 +108,55 @@ async function main() {
   const peeledTally = tally(peeled.grid);
   if (peeledTally.total !== 16 * 16 || peeledTally.counts[0]?.key !== "A26") {
     throw new Error("去背景不应剥掉黄脸");
+  }
+
+  const boards = planBoards(48, 48, 29);
+  if (boards.length !== 4) throw new Error(`48 图应按 29 分成 4 板，实际 ${boards.length}`);
+  if (boards.map((board) => board.label).join(",") !== "A1,A2,B1,B2") {
+    throw new Error(`分板标号错误 ${boards.map((board) => board.label).join(",")}`);
+  }
+  const edge = boards[3];
+  if (edge.row1 - edge.row0 !== 19 || edge.col1 - edge.col0 !== 19) {
+    throw new Error("边缘板应保留不足 29 的尺寸");
+  }
+  if (boardPitch(29) !== "5" || preferredScale(29, "a4") !== "5") throw new Error("29 板在 A4 上应默认 5mm 1:1");
+  if (pitchFits(58, "a4", 5) || preferredScale(58, "a4") !== "fit") throw new Error("58 是 5mm 板，A4 放不下时应缩放到页面");
+  if (preferredScale(87, "a4") !== "fit") throw new Error("87 板在 A4 上应缩小到页面");
+  if (boardPitch(50) !== "2.6" || boardPitch(52) !== "2.6") throw new Error("50/52 应是 2.6mm 迷你板");
+  if (preferredScale(50, "a4") !== "2.6" || preferredScale(52, "a4") !== "2.6") {
+    throw new Error("50/52 板在 A4 上应默认 2.6mm 1:1");
+  }
+  const mini50 = planBoards(104, 104, 50);
+  if (mini50.length !== 9 || mini50[2].col1 - mini50[2].col0 !== 4) {
+    throw new Error("104 图按 50 板应分成 3×3，边缘 4 格");
+  }
+  const mini52 = planBoards(104, 104, 52);
+  if (mini52.map((board) => board.label).join(",") !== "A1,A2,B1,B2") {
+    throw new Error(`104 图按 52 板标号错误 ${mini52.map((board) => board.label).join(",")}`);
+  }
+  if (mini52.some((board) => board.col1 - board.col0 !== 52 || board.row1 - board.row0 !== 52)) {
+    throw new Error("104 图按 52 板应是四块整板");
+  }
+  const perPage = legendCapacity({ w: 210, h: 297 }, 20);
+  if (perPage < 60) throw new Error(`采购清单每页容量过小 ${perPage}`);
+  if (Math.ceil(180 / perPage) < 2) throw new Error("多色采购清单应分成多页");
+
+  const sheets = planBoards(58, 58, 29);
+  const header = boardPageHeader(sheets[2]);
+  if (!header.includes("全局行 30–58") || !header.includes("列 1–29")) {
+    throw new Error(`分板页眉应保留全局范围 ${header}`);
+  }
+  if (boardAxisNumbers(sheets[2].row1 - sheets[2].row0).includes(30) || boldGuideOffsets(29)[0] !== 5) {
+    throw new Error("加粗线和坐标应从每块板自己的边缘重新计数");
+  }
+  const a26 = fitBeadCode("A26", 2.6, new Set(["A26", "A2", "A"]));
+  const chopped = fitBeadCode("109", 1.8, new Set(["109", "10", "1"]));
+  if (!a26 || a26.kind !== "text" || a26.text !== "A26" || chopped?.kind !== "dot" || PDF_DPI < 200) {
+    throw new Error("色号不能截断成另一个色号，且页面至少 200dpi");
+  }
+  const wide = planBoards(30, 60, 58);
+  if (wide.length !== 2 || wide[1].col1 - wide[1].col0 !== 2) {
+    throw new Error("58 分板应保留右侧不足一块的窄板");
   }
 
   console.log(

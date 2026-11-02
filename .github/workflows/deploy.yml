@@ -27,6 +27,12 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Check
+        run: npm run check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
       - name: Build static export
         run: npm run build
       - name: Configure Pages
