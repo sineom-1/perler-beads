@@ -48,13 +48,11 @@ type SheetTab = "size" | "style" | "clean" | "colors" | "advanced";
 
 const BOARDS = [16, 29, 48, 58, 87];
 const SOURCE_URL = "https://github.com/sineom-1/perler-beads";
-const UPSTREAM_URL = "https://github.com/Zippland/perler-beads";
 
 function SourceNote({ style }: { style?: React.CSSProperties }) {
   return (
     <p className="source-note" style={style}>
-      开源项目 · AGPL-3.0 · <a href={SOURCE_URL} target="_blank" rel="noreferrer">查看源码</a> · 改编自{" "}
-      <a href={UPSTREAM_URL} target="_blank" rel="noreferrer">Zippland/perler-beads</a>
+      <a href={SOURCE_URL} target="_blank" rel="noreferrer">源码与许可</a>
     </p>
   );
 }
@@ -1205,7 +1203,6 @@ export default function BeadStudio() {
               <summary>高级</summary>
               <div style={{ marginTop: 12 }}><AdvancedFields /></div>
             </details>
-            <SourceNote style={{ marginTop: 16 }} />
           </div>
         </aside>
         <main className="stage" ref={stageRef}>
@@ -1432,7 +1429,6 @@ export default function BeadStudio() {
                   <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
                   <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
                 </div>
-                <SourceNote />
               </div>
             </div>
           </div>

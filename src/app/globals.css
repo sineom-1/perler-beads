@@ -224,6 +224,22 @@ select.num, .select {
   background: white;
   padding: 0 10px;
 }
+select.select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 42px;
+  padding: 0 40px 0 16px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%236e645c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 16px center;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s;
+}
+select.select:hover { border-color: var(--border-strong); }
+select.select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47,125,109,0.15); }
 
 .thumb {
   display: flex;

@@ -18,7 +18,6 @@ const PAGE_H_MM = 297;
 const PAGE_W_PT = 595.28;
 const PAGE_H_PT = 841.89;
 const MARGIN_MM = 12;
-const SOURCE_NOTE = "开源项目 AGPL-3.0 · 源码 github.com/sineom-1/perler-beads · 改编自 Zippland/perler-beads";
 
 export interface PrintPdfOptions {
   grid: GridCell[][];
@@ -68,7 +67,6 @@ function footer(page: Page, pageNo: number, pageCount: number) {
   for (let i = 0; i <= 10; i++) context.fillRect(barX + mm(i * 10) - mm(0.15), barY - mm(i % 5 === 0 ? 2 : 1.2), mm(0.3), mm(i % 5 === 0 ? 2 : 1.2));
   text(context, "10 cm", barX + mm(103), barY + mm(0.6), 2.6, { weight: 700 });
   text(context, "打印时选「实际大小 / 100%」，别选「适合页面」；打完量一下左边这条线，应正好 10 厘米。", mm(PAGE_W_MM - MARGIN_MM), barY - mm(3.5), 2.4, { align: "right", color: "#6e645c" });
-  text(context, SOURCE_NOTE, mm(MARGIN_MM), y, 2.4, { color: "#a0968d" });
   text(context, `${pageNo} / ${pageCount}`, mm(PAGE_W_MM - MARGIN_MM), y, 2.6, { align: "right", color: "#6e645c" });
 }
 

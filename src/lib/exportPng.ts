@@ -9,7 +9,6 @@ import { contrastText } from "./color";
 import { compareCodes } from "./palette";
 import type { ColorCount, GridCell } from "./pixelate";
 
-export const SOURCE_NOTE = "开源 AGPL-3.0 · github.com/sineom-1/perler-beads";
 const FONT = '"WenQuanYi Micro Hei", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif';
 
 export interface PatternExportOptions {
@@ -243,8 +242,6 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
   context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}${options.mirror ? " · 已镜像" : ""}`, margin, height - 18);
-  context.textAlign = "right";
-  context.fillText(SOURCE_NOTE, width - margin, height - 18);
   return canvas;
 }
 
