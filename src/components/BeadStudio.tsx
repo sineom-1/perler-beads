@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Brush, Crop, Eraser, Eye, Grid3x3, Minus, PaintBucket, Pipette, Plus, Redo2, Square, Undo2 } from "lucide-react";
+import { Brush, Crop, Eraser, Eye, Grid3x3, Hand, Maximize, Minus, PaintBucket, Pipette, Plus, Redo2, Square, Undo2 } from "lucide-react";
 import { assetUrl } from "@/lib/assets";
 import type { DistanceMetric, PixelMode } from "@/lib/color";
 import { downloadCanvas, renderPatternCanvas, renderShoppingListCanvas } from "@/lib/exportPng";
@@ -361,6 +361,18 @@ export default function BeadStudio() {
     // Fit when the board size changes, not on every paint.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cols, rows, Boolean(grid), fit]);
+
+  // The mobile sheet changes the stage height; refit so the board stays in view.
+  useEffect(() => {
+    if (!gridRef.current) return;
+    const timer = window.setTimeout(() => fit(), 30);
+    return () => window.clearTimeout(timer);
+  }, [sheetOpen, fit]);
+
+  // On phones one finger should move the board, not paint it, until a tool is picked.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) setTool("view");
+  }, []);
 
   useEffect(() => {
     redraw();
@@ -1229,19 +1241,25 @@ export default function BeadStudio() {
             <button type="button" className="icon-btn" data-on={showBoard} title="板线" onClick={() => setShowBoard((value) => !value)}>29</button>
             <button type="button" className="icon-btn" data-on={compareHold} title="对比原图" onPointerDown={() => setCompareHold(true)} onPointerUp={() => setCompareHold(false)} onPointerLeave={() => setCompareHold(false)}><Eye size={16} /></button>
           </div>
-          <div className="mini-tools mobile-only">
-            <button type="button" className="icon-btn" data-on={tool === "brush"} onClick={() => activateTool("brush")}><Brush size={16} /></button>
-            <button type="button" className="icon-btn" data-on={tool === "fill"} onClick={() => activateTool("fill")}><PaintBucket size={16} /></button>
-            <button type="button" className="icon-btn" data-on={tool === "pick"} onClick={() => setTool("pick")}><Pipette size={16} /></button>
-            <button type="button" className="icon-btn" onClick={undo}><Undo2 size={16} /></button>
-          </div>
         </main>
         <aside className="panel right">
           <h2 style={{ marginTop: 0 }}>颜色清单</h2>
           <ColorList />
         </aside>
-        <section className="sheet mobile-only">
-          <div className="handle" onClick={() => setSheetOpen((value) => !value)} />
+        <section className="sheet mobile-only" data-open={sheetOpen}>
+          <button type="button" className="handle" aria-label={sheetOpen ? "收起设置" : "展开设置"} onClick={() => setSheetOpen((value) => !value)}><i /></button>
+          <div className="m-toolbar">
+            <button type="button" className="icon-btn" data-on={tool === "view"} title="移动" onClick={() => activateTool("view")}><Hand size={18} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "brush"} title="画笔" onClick={() => activateTool("brush")}><Brush size={18} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "fill"} title="填充" onClick={() => activateTool("fill")}><PaintBucket size={18} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "eraser"} title="橡皮" onClick={() => activateTool("eraser")}><Eraser size={18} /></button>
+            <button type="button" className="icon-btn" data-on={tool === "pick"} title="吸管" onClick={() => activateTool("pick")}><Pipette size={18} /></button>
+            <button type="button" className="icon-btn" title="当前颜色" onClick={() => setPickerOpen(true)}><i className="swatch" style={{ background: brushHex ?? "#fff" }} /></button>
+            <span className="m-sep" />
+            <button type="button" className="icon-btn" title="撤销" onClick={undo} disabled={undoRef.current.length === 0}><Undo2 size={18} /></button>
+            <button type="button" className="icon-btn" title="重做" onClick={redo} disabled={redoRef.current.length === 0}><Redo2 size={18} /></button>
+            <button type="button" className="icon-btn" title="适应屏幕" onClick={fit}><Maximize size={18} /></button>
+          </div>
           <div className="sheet-tabs">
             {([
               ["size", "尺寸"],
@@ -1250,10 +1268,21 @@ export default function BeadStudio() {
               ["colors", "颜色"],
               ["advanced", "高级"],
             ] as const).map(([id, label]) => (
-              <button key={id} type="button" className="chip" data-on={sheetTab === id} onClick={() => setSheetTab(id)}>{label}</button>
+              <button
+                key={id}
+                type="button"
+                className="chip"
+                data-on={sheetOpen && sheetTab === id}
+                onClick={() => {
+                  if (sheetOpen && sheetTab === id) setSheetOpen(false);
+                  else { setSheetTab(id); setSheetOpen(true); }
+                }}
+              >
+                {label}
+              </button>
             ))}
           </div>
-          <div className="sheet-body" style={{ maxHeight: sheetOpen ? "62vh" : "28vh" }}>
+          {sheetOpen && <div className="sheet-body">
             {sheetTab === "size" && <><div className="chips" style={{ marginBottom: 12 }}>{COLOR_SYSTEMS.map((system) => (
               <button key={system} type="button" className="chip" data-on={colorSystem === system} onClick={() => setColorSystem(system)}>{system}</button>
             ))}</div><select className="select" value={paletteId} onChange={(event) => setPaletteId(event.target.value)} style={{ marginBottom: 12 }}>{PALETTE_CHOICES.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select><SizeFields /></>}
@@ -1261,7 +1290,7 @@ export default function BeadStudio() {
             {sheetTab === "clean" && <CleanFields />}
             {sheetTab === "colors" && <ColorList />}
             {sheetTab === "advanced" && <AdvancedFields />}
-          </div>
+          </div>}
         </section>
       </div>
       {hover && <div className="hover-tip" style={{ left: hover.x, top: hover.y }}>{hover.text}</div>}

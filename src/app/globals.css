@@ -429,37 +429,51 @@ select.select:focus { outline: none; border-color: var(--accent); box-shadow: 0 
     flex-direction: column;
   }
   .panel { display: none; }
-  .stage { height: 55vh; flex: none; }
+  .stage { flex: 1; min-height: 0; }
   .tool-pill, .view-pill { display: none; }
-  .mini-tools {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    z-index: 3;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
   .sheet {
-    flex: 1;
-    min-height: 0;
+    flex: none;
     background: var(--surface);
     border-top: 1px solid var(--border);
     border-radius: 16px 16px 0 0;
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow);
+    box-shadow: 0 -6px 20px rgba(42, 36, 32, 0.08);
+    padding-bottom: env(safe-area-inset-bottom);
   }
-  .sheet-tabs {
-    display: flex;
-    gap: 4px;
-    overflow: auto;
-    padding: 8px 12px 0;
-  }
-  .sheet-body { overflow: auto; padding: 12px 16px 24px; }
   .handle {
-    width: 40px; height: 4px; border-radius: 999px;
-    background: var(--border-strong); margin: 8px auto 0;
+    flex: none; width: 100%; height: 20px; padding: 0; border: 0; background: transparent;
+    display: grid; place-items: center;
+  }
+  .handle i { width: 40px; height: 4px; border-radius: 999px; background: var(--border-strong); display: block; }
+  .m-toolbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 0 10px 6px;
+    overflow-x: auto;
+  }
+  .m-toolbar .icon-btn { width: 40px; height: 40px; min-height: 40px; flex: none; }
+  .m-toolbar .icon-btn:disabled { opacity: .35; }
+  .m-toolbar .swatch { width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--border-strong); }
+  .m-sep { flex: none; width: 1px; height: 22px; background: var(--border); }
+  .sheet-tabs {
+    flex: none;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 12px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .sheet-tabs .chip { flex: none; min-height: 36px; padding: 0 16px; white-space: nowrap; }
+  .sheet-body {
+    max-height: 42dvh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 16px 16px;
+    border-top: 1px solid var(--border);
   }
 }
 
