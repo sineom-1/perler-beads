@@ -6,6 +6,7 @@ import { assetUrl } from "@/lib/assets";
 import type { DistanceMetric, PixelMode } from "@/lib/color";
 import { downloadCanvas, renderPatternCanvas, renderShoppingListCanvas } from "@/lib/exportPng";
 import { decodeImageFile } from "@/lib/imageFile";
+import { renderPrintPdf } from "@/lib/printPdf";
 import {
   COLOR_SYSTEMS,
   PALETTE_CHOICES,
@@ -21,6 +22,7 @@ import {
   cloneGrid,
   floodFillPaint,
   paintCell,
+  reduceColors,
   remapColor,
   removeBorderBackground,
   replaceHex,
@@ -38,6 +40,17 @@ type CropRect = { x: number; y: number; w: number; h: number };
 type SheetTab = "size" | "style" | "clean" | "colors" | "advanced";
 
 const BOARDS = [16, 29, 48, 58, 87];
+const SOURCE_URL = "https://github.com/sineom-1/perler-beads";
+const UPSTREAM_URL = "https://github.com/Zippland/perler-beads";
+
+function SourceNote({ style }: { style?: React.CSSProperties }) {
+  return (
+    <p className="source-note" style={style}>
+      开源项目 · AGPL-3.0 · <a href={SOURCE_URL} target="_blank" rel="noreferrer">查看源码</a> · 改编自{" "}
+      <a href={UPSTREAM_URL} target="_blank" rel="noreferrer">Zippland/perler-beads</a>
+    </p>
+  );
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
@@ -138,6 +151,10 @@ export default function BeadStudio() {
   const [metric, setMetric] = useState<DistanceMetric>("oklab");
   const [styleId, setStyleId] = useState<StyleId>("cartoon");
   const [removeBg, setRemoveBg] = useState(false);
+  const [maxColors, setMaxColors] = useState(0);
+  const [minCount, setMinCount] = useState(0);
+  const [pitchMm, setPitchMm] = useState(5);
+  const [pdfBusy, setPdfBusy] = useState<number | null>(null);
   const [grid, setGrid] = useState<GridCell[][] | null>(null);
   const [counts, setCounts] = useState<ColorCount[]>([]);
   const [total, setTotal] = useState(0);
@@ -300,6 +317,7 @@ export default function BeadStudio() {
           if (seq !== runRef.current) return;
           let next = result.grid;
           if (removeBgRef.current) next = removeBorderBackground(next).grid;
+          if (maxColors > 0 || minCount > 0) next = reduceColors(next, maxColors, minCount, metric, getColorByHex).grid;
           undoRef.current = [];
           redoRef.current = [];
           bumpHist();
@@ -314,7 +332,7 @@ export default function BeadStudio() {
       })();
     }, 160);
     return () => window.clearTimeout(timer);
-  }, [cols, rows, paletteId, mode, threshold, metric, buildToken, applyGrid, notify]);
+  }, [cols, rows, paletteId, mode, threshold, metric, maxColors, minCount, buildToken, applyGrid, notify]);
 
   useEffect(() => {
     if (skipStyle.current) {
@@ -791,6 +809,38 @@ export default function BeadStudio() {
     downloadCanvas(canvas, `拼豆图纸-${cols}x${rows}-${colorSystem}.png`);
   }
 
+  async function downloadPdf() {
+    const current = gridRef.current;
+    if (!current || pdfBusy !== null) return;
+    const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
+    setPdfBusy(0);
+    try {
+      const { blob, pages } = await renderPrintPdf({
+        grid: current,
+        pitchMm,
+        board: 29,
+        mirror: exportMirror,
+        systemLabel: colorSystem,
+        paletteLabel,
+        codeFor: (hex) => displayCode(hex, colorSystem),
+        onProgress: (ratio) => setPdfBusy(ratio),
+      });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `拼豆图纸-1比1打印-${cols}x${rows}-${colorSystem}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+      notify(`已生成 ${pages} 页 PDF。打印时选「实际大小 / 100%」。`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "PDF 生成失败");
+    } finally {
+      setPdfBusy(null);
+    }
+  }
+
   function downloadList() {
     if (!gridRef.current) return;
     const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
@@ -901,6 +951,22 @@ export default function BeadStudio() {
             <button type="button" className="stepper-btn" onClick={() => setThreshold((value) => Math.min(80, value + 1))}><Plus size={16} /></button>
           </div>
         </div>
+        <div className="field">
+          <span className="row-label">最多用几种颜色 {maxColors === 0 ? "不限" : maxColors} <Tip text="超出的颜色从用得最少的开始，并到最接近的颜色。" /></span>
+          <div className="slider-row">
+            <button type="button" className="stepper-btn" onClick={() => setMaxColors((value) => (value <= 2 ? 0 : value - 1))}><Minus size={16} /></button>
+            <input type="range" min={0} max={60} value={maxColors} onChange={(event) => { const value = Number(event.target.value); setMaxColors(value === 1 ? 2 : value); }} />
+            <button type="button" className="stepper-btn" onClick={() => setMaxColors((value) => (value === 0 ? 2 : Math.min(60, value + 1)))}><Plus size={16} /></button>
+          </div>
+        </div>
+        <div className="field">
+          <span className="row-label">少于 {minCount === 0 ? "—" : minCount} 颗的颜色并到相近色 <Tip text="省得为了几颗豆专门买一包。0 表示不合并。" /></span>
+          <div className="slider-row">
+            <button type="button" className="stepper-btn" onClick={() => setMinCount((value) => Math.max(0, value - 1))}><Minus size={16} /></button>
+            <input type="range" min={0} max={30} value={minCount} onChange={(event) => setMinCount(Number(event.target.value))} />
+            <button type="button" className="stepper-btn" onClick={() => setMinCount((value) => Math.min(30, value + 1))}><Plus size={16} /></button>
+          </div>
+        </div>
         <button type="button" className="chip" data-on={removeBg} onClick={toggleBackground}>去除背景</button>
       </div>
     );
@@ -931,6 +997,7 @@ export default function BeadStudio() {
             <option value="code">按色号</option>
           </select>
         </div>
+        <p className="muted" style={{ margin: "0 0 8px" }}>点一下颜色，画布只亮这一色，方便一色一色地拼。</p>
         <input className="select" placeholder="搜索色号" value={colorQuery} onChange={(event) => setColorQuery(event.target.value)} />
         <div style={{ marginTop: 8 }}>
           {sortedCounts.map((item) => {
@@ -1041,6 +1108,7 @@ export default function BeadStudio() {
           </div>
           <p className="muted" style={{ marginTop: 16 }}>拖放图片到此处，或按 Ctrl/Cmd+V 粘贴</p>
         </div>
+        <SourceNote style={{ position: "fixed", bottom: 12, left: 0, right: 0, textAlign: "center" }} />
         {message && <p className="hover-tip" style={{ position: "fixed", bottom: 24, left: "50%" }}>{message}</p>}
       </div>
     );
@@ -1125,6 +1193,7 @@ export default function BeadStudio() {
               <summary>高级</summary>
               <div style={{ marginTop: 12 }}><AdvancedFields /></div>
             </details>
+            <SourceNote style={{ marginTop: 16 }} />
           </div>
         </aside>
         <main className="stage" ref={stageRef}>
@@ -1148,6 +1217,13 @@ export default function BeadStudio() {
             onPointerCancel={onPointerUp}
             onPointerLeave={() => setHover(null)}
           />
+          {highlightHex && (
+            <div className="highlight-pill">
+              <i className="swatch" style={{ background: highlightHex }} />
+              只看 {displayCode(highlightHex, colorSystem)} · {counts.find((item) => item.hex === highlightHex)?.count ?? 0} 颗
+              <button type="button" className="ghost" style={{ minHeight: 28 }} onClick={() => setHighlightHex(null)}>显示全部</button>
+            </div>
+          )}
           <div className="view-pill">
             <button type="button" className="icon-btn" onClick={() => zoomBy(0.9)}><Minus size={16} /></button>
             <span className="muted" style={{ width: 48, textAlign: "center" }}>{zoomPct}%</span>
@@ -1271,7 +1347,7 @@ export default function BeadStudio() {
             <h3>导出</h3>
             <div className="export-layout">
               <div className="export-preview" ref={exportPreviewRef}>
-                <canvas ref={exportCanvasRef} />
+                <canvas ref={exportCanvasRef} style={exportMirror ? { transform: "scaleX(-1)" } : undefined} />
               </div>
               <div className="export-options">
                 <div className="chips">
@@ -1279,13 +1355,37 @@ export default function BeadStudio() {
                   <button type="button" className="chip" data-on={exportGrid} onClick={() => setExportGrid((value) => !value)}>网格线</button>
                   <button type="button" className="chip" data-on={exportCoords} onClick={() => setExportCoords((value) => !value)}>坐标</button>
                   <button type="button" className="chip" data-on={exportShape === "round"} onClick={() => setExportShape((value) => (value === "round" ? "square" : "round"))}>{exportShape === "round" ? "圆豆" : "方格"}</button>
-                  <button type="button" className="chip" data-on={exportMirror} onClick={() => setExportMirror((value) => !value)}>镜像</button>
+                </div>
+                <div className="mirror-box" data-on={exportMirror}>
+                  <label className="inline">
+                    <input type="checkbox" checked={exportMirror} onChange={(event) => setExportMirror(event.target.checked)} />
+                    <strong>镜像（左右翻转）</strong>
+                  </label>
+                  <p className="muted">如果你的做法会把作品翻过来烫（比如贴美纹纸翻面），成品会左右颠倒。图里有文字或分左右时，记得勾上。</p>
+                </div>
+                <div className="pdf-box">
+                  <strong>1:1 打印 PDF</strong>
+                  <p className="muted">每页一块 29×29 板，按实际大小打印后可以直接垫在板下面拼。每页带行列编号，每 5 格、10 格一条粗线。</p>
+                  <div className="inline" style={{ flexWrap: "wrap" }}>
+                    <button type="button" className="chip" data-on={pitchMm === 5} onClick={() => setPitchMm(5)}>5 mm 豆</button>
+                    <button type="button" className="chip" data-on={pitchMm === 2.6} onClick={() => setPitchMm(2.6)}>2.6 mm 迷你豆</button>
+                    <label className="inline muted">
+                      豆距
+                      <input className="num" type="number" min={2} max={6} step={0.1} value={pitchMm} style={{ width: 64 }} onChange={(event) => { const value = Number(event.target.value); if (value >= 2 && value <= 6) setPitchMm(Math.round(value * 10) / 10); }} />
+                      mm
+                    </label>
+                  </div>
+                  <p className="muted">不确定就用尺子量板上 10 个钉子的距离，再除以 10。</p>
                 </div>
                 <div className="export-actions">
-                  <button type="button" className="primary" onClick={downloadPattern}>下载图纸 PNG</button>
+                  <button type="button" className="primary" disabled={pdfBusy !== null} onClick={() => void downloadPdf()}>
+                    {pdfBusy === null ? "下载 1:1 打印 PDF" : `生成中 ${Math.round(pdfBusy * 100)}%`}
+                  </button>
+                  <button type="button" className="ghost" onClick={downloadPattern}>下载图纸 PNG</button>
                   <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
                   <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
                 </div>
+                <SourceNote />
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { colorDistance, findClosest } from "../src/lib/color";
 import { displayCode, getColorByHex, getPalette, paletteCount } from "../src/lib/palette";
-import { buildPattern, removeBorderBackground, tally } from "../src/lib/pixelate";
+import { buildPattern, reduceColors, removeBorderBackground, tally, type GridCell } from "../src/lib/pixelate";
 
 async function main() {
   const red = { r: 253, g: 84, b: 61 };
@@ -108,6 +108,17 @@ async function main() {
   if (peeledTally.total !== 16 * 16 || peeledTally.counts[0]?.key !== "A26") {
     throw new Error("去背景不应剥掉黄脸");
   }
+
+  // Color cap: 3 colors with counts 50/30/2 → cap 2 folds the 2-bead color; minCount 40 leaves 1 color.
+  const pal = getPalette("291");
+  const [ca, cb, cc] = [pal[0], pal[1], pal[100]];
+  const cellOf = (c: typeof ca): GridCell => ({ key: c.key, hex: c.hex, isExternal: false });
+  const capGrid: GridCell[][] = [Array.from({ length: 82 }, (_, i) => cellOf(i < 50 ? ca : i < 80 ? cb : cc))];
+  const capped = tally(reduceColors(capGrid, 2, 0, "oklab", getColorByHex).grid);
+  if (capped.counts.length !== 2 || capped.total !== 82 || capped.counts.some((c) => c.hex === cc.hex)) throw new Error("最多颜色数合并错误");
+  const folded = tally(reduceColors(capGrid, 0, 40, "oklab", getColorByHex).grid);
+  if (folded.counts.length !== 1 || folded.counts[0].count !== 82) throw new Error("少量颜色合并错误");
+  if (reduceColors(capGrid, 0, 0, "oklab", getColorByHex).merged !== 0) throw new Error("不限时不应合并");
 
   console.log(
     JSON.stringify({

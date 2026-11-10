@@ -446,3 +446,66 @@ export function floodErase(grid: GridCell[][], row: number, col: number): GridCe
 export function cloneGrid(grid: GridCell[][]): GridCell[][] {
   return grid.map((row) => row.map((cell) => ({ ...cell })));
 }
+
+/**
+ * Cap the number of colors and fold rare colors into their nearest neighbor.
+ * Repeatedly takes the least-used color; while it is under `minCount` beads or
+ * the pattern still has more than `maxColors` colors, its cells become the
+ * closest color that remains in the pattern. 0 disables either limit.
+ */
+export function reduceColors(
+  grid: GridCell[][],
+  maxColors: number,
+  minCount: number,
+  metric: DistanceMetric,
+  lookup: (hex: string) => PaletteColor | undefined,
+): { grid: GridCell[][]; merged: number } {
+  const { counts } = tally(grid);
+  const live = new Map(counts.map((item) => [item.hex, item.count]));
+  const remap = new Map<string, string>();
+  let merged = 0;
+  while (live.size > 1) {
+    let rareHex = "";
+    let rareCount = Number.POSITIVE_INFINITY;
+    for (const [hex, count] of live) {
+      if (count < rareCount) {
+        rareCount = count;
+        rareHex = hex;
+      }
+    }
+    const tooMany = maxColors > 0 && live.size > maxColors;
+    const tooRare = minCount > 0 && rareCount < minCount;
+    if (!tooMany && !tooRare) break;
+    const source = lookup(rareHex);
+    let targetHex = "";
+    let best = Number.POSITIVE_INFINITY;
+    for (const hex of live.keys()) {
+      if (hex === rareHex) continue;
+      const candidate = lookup(hex);
+      const gap = source && candidate ? paletteDistance(source, candidate, metric) : Number.POSITIVE_INFINITY;
+      if (!targetHex || gap < best) {
+        best = gap;
+        targetHex = hex;
+      }
+    }
+    live.delete(rareHex);
+    live.set(targetHex, (live.get(targetHex) ?? 0) + rareCount);
+    remap.set(rareHex, targetHex);
+    merged += 1;
+  }
+  if (remap.size === 0) return { grid, merged: 0 };
+  const resolve = (hex: string) => {
+    let current = hex;
+    while (remap.has(current)) current = remap.get(current)!;
+    return current;
+  };
+  const next = grid.map((row) =>
+    row.map((cell) => {
+      if (cell.isExternal || !remap.has(cell.hex)) return { ...cell };
+      const hex = resolve(cell.hex);
+      const color = lookup(hex);
+      return { key: color?.key ?? cell.key, hex, isExternal: false };
+    }),
+  );
+  return { grid: next, merged };
+}

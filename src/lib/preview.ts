@@ -161,6 +161,7 @@ export function drawViewport(canvas: HTMLCanvasElement, grid: GridCell[][], opti
     };
     strokeGuides(1, "rgba(42,36,32,0.10)", 1);
     if (cell >= 6) strokeGuides(5, "rgba(42,36,32,0.35)", 1.5);
+    if (cell >= 3) strokeGuides(10, "rgba(42,36,32,0.7)", 2);
     if (showBoard) strokeGuides(29, "rgba(232,112,79,0.7)", 2);
   }
 
