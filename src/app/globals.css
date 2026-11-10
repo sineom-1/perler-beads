@@ -166,6 +166,14 @@ button { cursor: pointer; }
 }
 .primary:hover { background: var(--primary-hover); }
 
+.primary, .ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .ghost {
   background: var(--surface);
   border-color: var(--border-strong);
@@ -425,3 +433,21 @@ select.num, .select {
 .mirror-box[data-on="true"] { border-color: var(--primary, #e8704f); background: rgba(232,112,79,0.06); }
 .mirror-box p, .pdf-box p { margin: 0; font-size: 12px; }
 @media (max-width: 767px) { .highlight-pill { top: 12px; } }
+
+select.sort-select {
+  width: auto;
+  height: 30px;
+  padding: 0 26px 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-2);
+  border-color: var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 13px center, right 9px center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  text-align: left;
+}

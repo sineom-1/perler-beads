@@ -992,7 +992,7 @@ export default function BeadStudio() {
       <div>
         <div className="inline" style={{ justifyContent: "space-between", marginBottom: 8 }}>
           <strong>{counts.length} 色 · {total.toLocaleString("zh-CN")} 颗</strong>
-          <select className="num" style={{ width: 88 }} value={sortBy} onChange={(event) => setSortBy(event.target.value as "count" | "code")}>
+          <select className="sort-select" aria-label="排序" value={sortBy} onChange={(event) => setSortBy(event.target.value as "count" | "code")}>
             <option value="count">按数量</option>
             <option value="code">按色号</option>
           </select>
@@ -1160,7 +1160,7 @@ export default function BeadStudio() {
               {thumbUrl ? <img src={thumbUrl} alt="" /> : <div style={{ width: 72, height: 72, borderRadius: 12, background: "var(--surface-2)" }} />}
               <div>
                 <div>{imageLabel ?? "画布"}</div>
-                <button type="button" className="ghost" style={{ marginTop: 8, minHeight: 32 }} disabled={!originalRef.current} onClick={() => {
+                <button type="button" className="ghost" style={{ marginTop: 8, minHeight: 32, padding: "0 12px" }} disabled={!originalRef.current} onClick={() => {
                   const pixels = originalRef.current;
                   if (!pixels) return;
                   setCrop({ pixels, rect: aspectCrop(pixels, 1, 1), url: pixelsToUrl(pixels), name: imageLabel ?? "图片" });
