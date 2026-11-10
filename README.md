@@ -4,7 +4,7 @@
 
 上传任意图片，在浏览器里生成可打印的拼豆底稿和采购清单。图像处理全部发生在本地 Canvas 中，没有服务端接口。
 
-在线使用：<https://sineom-1.github.io/perler-beads/>
+在线使用：<https://pind.sanqiu.best/>
 
 ## 来源与许可
 
@@ -40,15 +40,15 @@ npm install
 npm run dev
 ```
 
-开发服务器带有 `basePath: /perler-beads`，请打开 `http://localhost:3000/perler-beads/`。
+开发服务器请打开 `http://localhost:3000/`。
 
 ```bash
 npm run check
 npm run build
 ```
 
-`npm run build` 使用 Next.js `output: 'export'`，静态文件在 `out/`。本地查看导出结果时，需要让站点挂在 `/perler-beads/` 下面，例如把 `out/` 放到某个目录的 `perler-beads/` 子文件夹再启动静态服务器。
+`npm run build` 使用 Next.js `output: 'export'`，静态文件在 `out/`。本地查看导出结果时，直接对 `out/` 启动静态服务器即可。
 
 ## GitHub Pages
 
-推送到 `main` 会运行 `.github/workflows/deploy.yml`（`actions/configure-pages`、`actions/upload-pages-artifact`、`actions/deploy-pages`）。Pages 源应设为 GitHub Actions。`next.config.ts` 固定了 `basePath` 与 `assetPrefix` `/perler-beads`，图片 `unoptimized`，`public/.nojekyll` 会一并导出。
+推送到 `main` 会运行 `.github/workflows/deploy.yml`（`actions/configure-pages`、`actions/upload-pages-artifact`、`actions/deploy-pages`）。Pages 源应设为 GitHub Actions。站点使用自定义域名 `pind.sanqiu.best`（在仓库 Settings → Pages 里设置），挂在域名根路径，`basePath` 为空，图片 `unoptimized`，`public/.nojekyll` 会一并导出。
