@@ -47,6 +47,13 @@ const CROP_RATIOS: { key: CropRatio; label: string; aspect: [number, number] | n
 type SheetTab = "size" | "style" | "clean" | "colors" | "advanced";
 
 const BOARDS = [16, 29, 48, 58, 87];
+
+const STYLE_PRESETS = {
+  cartoon: { mode: "dominant", metric: "oklab", threshold: 30 },
+  pixel: { mode: "dominant", metric: "oklab", threshold: 0 },
+  photo: { mode: "average", metric: "ciede2000", threshold: 15 },
+  simple: { mode: "dominant", metric: "oklab", threshold: 50 },
+} as const;
 const SOURCE_URL = "https://github.com/sineom-1/perler-beads";
 
 function SourceNote({ style }: { style?: React.CSSProperties }) {
@@ -134,8 +141,6 @@ export default function BeadStudio() {
   const runRef = useRef(0);
   const excludedRef = useRef<string[]>([]);
   const removeBgRef = useRef(false);
-  const styleLock = useRef<StyleId | null>("cartoon");
-  const skipStyle = useRef(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const compareRef = useRef<HTMLCanvasElement | null>(null);
@@ -158,7 +163,6 @@ export default function BeadStudio() {
   const [colorSystem, setColorSystem] = useState<ColorSystem>("MARD");
   const [mode, setMode] = useState<PixelMode>("dominant");
   const [metric, setMetric] = useState<DistanceMetric>("oklab");
-  const [styleId, setStyleId] = useState<StyleId>("cartoon");
   const [removeBg, setRemoveBg] = useState(false);
   const [maxColors, setMaxColors] = useState(0);
   const [minCount, setMinCount] = useState(0);
@@ -343,17 +347,12 @@ export default function BeadStudio() {
     return () => window.clearTimeout(timer);
   }, [cols, rows, paletteId, mode, threshold, metric, maxColors, minCount, buildToken, applyGrid, notify]);
 
-  useEffect(() => {
-    if (skipStyle.current) {
-      skipStyle.current = false;
-      return;
-    }
-    if (styleLock.current) {
-      styleLock.current = null;
-      return;
-    }
-    setStyleId("custom");
-  }, [mode, threshold, metric]);
+  // The style chip reflects the current settings directly, so it never drifts.
+  const styleId: StyleId =
+    (Object.keys(STYLE_PRESETS) as Exclude<StyleId, "custom">[]).find((id) => {
+      const preset = STYLE_PRESETS[id];
+      return preset.mode === mode && preset.metric === metric && preset.threshold === threshold;
+    }) ?? "custom";
 
   useEffect(() => {
     if (!grid) return;
@@ -563,25 +562,10 @@ export default function BeadStudio() {
   }
 
   function applyStyle(id: Exclude<StyleId, "custom">) {
-    styleLock.current = id;
-    setStyleId(id);
-    if (id === "cartoon") {
-      setMode("dominant");
-      setMetric("oklab");
-      setThreshold(30);
-    } else if (id === "pixel") {
-      setMode("dominant");
-      setMetric("oklab");
-      setThreshold(0);
-    } else if (id === "photo") {
-      setMode("average");
-      setMetric("ciede2000");
-      setThreshold(15);
-    } else {
-      setMode("dominant");
-      setMetric("oklab");
-      setThreshold(50);
-    }
+    const preset = STYLE_PRESETS[id];
+    setMode(preset.mode);
+    setMetric(preset.metric);
+    setThreshold(preset.threshold);
   }
 
   function zoomBy(factor: number) {
