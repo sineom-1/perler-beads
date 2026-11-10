@@ -37,6 +37,13 @@ type Tool = "view" | "brush" | "fill" | "eraser" | "pick";
 type StyleId = "cartoon" | "pixel" | "photo" | "simple" | "custom";
 type Shape = "round" | "square";
 type CropRect = { x: number; y: number; w: number; h: number };
+type CropRatio = "full" | "1:1" | "3:4" | "4:3";
+const CROP_RATIOS: { key: CropRatio; label: string; aspect: [number, number] | null }[] = [
+  { key: "full", label: "原图", aspect: null },
+  { key: "1:1", label: "1:1", aspect: [1, 1] },
+  { key: "3:4", label: "3:4", aspect: [3, 4] },
+  { key: "4:3", label: "4:3", aspect: [4, 3] },
+];
 type SheetTab = "size" | "style" | "clean" | "colors" | "advanced";
 
 const BOARDS = [16, 29, 48, 58, 87];
@@ -72,6 +79,10 @@ function pixelsToUrl(pixels: ImagePixels) {
   if (!context) return "";
   context.putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
   return canvas.toDataURL("image/png");
+}
+
+function fullRect(pixels: ImagePixels): CropRect {
+  return { x: 0, y: 0, w: pixels.width, h: pixels.height };
 }
 
 function aspectCrop(pixels: ImagePixels, aw: number, ah: number): CropRect {
@@ -175,7 +186,7 @@ export default function BeadStudio() {
   const [message, setMessage] = useState<string | null>(null);
   const [imageLabel, setImageLabel] = useState<string | null>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [crop, setCrop] = useState<{ pixels: ImagePixels; rect: CropRect; url: string; name: string } | null>(null);
+  const [crop, setCrop] = useState<{ pixels: ImagePixels; rect: CropRect; url: string; name: string; ratio: CropRatio } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportCodes, setExportCodes] = useState(true);
   const [exportGrid, setExportGrid] = useState(true);
@@ -195,7 +206,7 @@ export default function BeadStudio() {
   const exportPreviewRef = useRef<HTMLDivElement>(null);
   const brushRef = useRef<string | null>(null);
   const activateToolRef = useRef<(next: Tool) => void>(() => {});
-  const cropDrag = useRef<{ x: number; y: number; rect: CropRect } | null>(null);
+  const cropDrag = useRef<{ x: number; y: number; rect: CropRect; mode: "move" | "resize" } | null>(null);
 
   excludedRef.current = excluded;
   removeBgRef.current = removeBg;
@@ -503,7 +514,7 @@ export default function BeadStudio() {
     try {
       const pixels = await decodeImageFile(file);
       originalRef.current = pixels;
-      setCrop({ pixels, rect: aspectCrop(pixels, 1, 1), url: pixelsToUrl(pixels), name: file.name });
+      setCrop({ pixels, rect: fullRect(pixels), ratio: "full", url: pixelsToUrl(pixels), name: file.name });
     } catch {
       notify("这张图片无法读取。");
     }
@@ -1163,7 +1174,7 @@ export default function BeadStudio() {
                 <button type="button" className="ghost" style={{ marginTop: 8, minHeight: 32, padding: "0 12px" }} disabled={!originalRef.current} onClick={() => {
                   const pixels = originalRef.current;
                   if (!pixels) return;
-                  setCrop({ pixels, rect: aspectCrop(pixels, 1, 1), url: pixelsToUrl(pixels), name: imageLabel ?? "图片" });
+                  setCrop({ pixels, rect: fullRect(pixels), ratio: "full", url: pixelsToUrl(pixels), name: imageLabel ?? "图片" });
                 }}><Crop size={14} /> 裁剪</button>
               </div>
             </div>
@@ -1292,47 +1303,82 @@ export default function BeadStudio() {
         <div className="modal-back">
           <div className="modal">
             <h3>裁剪</h3>
-            <div className="chips" style={{ marginBottom: 12 }}>
-              <button type="button" className="chip" onClick={() => setCrop({ ...crop, rect: { x: 0, y: 0, w: crop.pixels.width, h: crop.pixels.height } })}>原图</button>
-              <button type="button" className="chip" onClick={() => setCrop({ ...crop, rect: aspectCrop(crop.pixels, 1, 1) })}>1:1</button>
-              <button type="button" className="chip" onClick={() => setCrop({ ...crop, rect: aspectCrop(crop.pixels, 3, 4) })}>3:4</button>
-              <button type="button" className="chip" onClick={() => setCrop({ ...crop, rect: aspectCrop(crop.pixels, 4, 3) })}>4:3</button>
+            <div className="chips" style={{ marginBottom: 8 }}>
+              {CROP_RATIOS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="chip"
+                  data-on={crop.ratio === item.key}
+                  onClick={() => setCrop({
+                    ...crop,
+                    ratio: item.key,
+                    rect: item.aspect ? aspectCrop(crop.pixels, item.aspect[0], item.aspect[1]) : fullRect(crop.pixels),
+                  })}
+                >{item.label}</button>
+              ))}
             </div>
-            <div
-              className="crop-stage"
-              onPointerMove={(event) => {
-                if (!cropDrag.current) return;
-                const img = event.currentTarget.querySelector("img");
-                if (!img) return;
-                const scaleX = crop.pixels.width / img.clientWidth;
-                const scaleY = crop.pixels.height / img.clientHeight;
-                const dx = (event.clientX - cropDrag.current.x) * scaleX;
-                const dy = (event.clientY - cropDrag.current.y) * scaleY;
-                const start = cropDrag.current.rect;
-                setCrop({
-                  ...crop,
-                  rect: {
-                    ...start,
-                    x: clamp(start.x + dx, 0, crop.pixels.width - start.w),
-                    y: clamp(start.y + dy, 0, crop.pixels.height - start.h),
-                  },
-                });
-              }}
-              onPointerUp={() => { cropDrag.current = null; }}
-            >
-              <img src={crop.url} alt="" />
+            <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>
+              原图 {crop.pixels.width}×{crop.pixels.height} · 选取 {Math.round(crop.rect.w)}×{Math.round(crop.rect.h)}　拖动框可移动，拖右下角可缩放
+            </p>
+            <div className="crop-stage">
               <div
-                className="crop-box"
-                style={{
-                  left: `${(crop.rect.x / crop.pixels.width) * 100}%`,
-                  top: `${(crop.rect.y / crop.pixels.height) * 100}%`,
-                  width: `${(crop.rect.w / crop.pixels.width) * 100}%`,
-                  height: `${(crop.rect.h / crop.pixels.height) * 100}%`,
+                className="crop-frame"
+                onPointerMove={(event) => {
+                  const drag = cropDrag.current;
+                  if (!drag) return;
+                  const frame = event.currentTarget;
+                  const scaleX = crop.pixels.width / frame.clientWidth;
+                  const scaleY = crop.pixels.height / frame.clientHeight;
+                  const dx = (event.clientX - drag.x) * scaleX;
+                  const dy = (event.clientY - drag.y) * scaleY;
+                  const start = drag.rect;
+                  const W = crop.pixels.width;
+                  const H = crop.pixels.height;
+                  if (drag.mode === "move") {
+                    setCrop({ ...crop, rect: { ...start, x: clamp(start.x + dx, 0, W - start.w), y: clamp(start.y + dy, 0, H - start.h) } });
+                    return;
+                  }
+                  const aspect = CROP_RATIOS.find((item) => item.key === crop.ratio)?.aspect;
+                  const minSize = Math.max(4, Math.round(Math.min(W, H) * 0.05));
+                  let w = clamp(start.w + dx, minSize, W - start.x);
+                  let h = clamp(start.h + dy, minSize, H - start.y);
+                  if (aspect) {
+                    const r = aspect[0] / aspect[1];
+                    h = w / r;
+                    if (h > H - start.y) { h = H - start.y; w = h * r; }
+                  }
+                  setCrop({ ...crop, rect: { ...start, w: Math.round(w), h: Math.round(h) } });
                 }}
-                onPointerDown={(event) => {
-                  cropDrag.current = { x: event.clientX, y: event.clientY, rect: crop.rect };
-                }}
-              />
+                onPointerUp={() => { cropDrag.current = null; }}
+                onPointerCancel={() => { cropDrag.current = null; }}
+              >
+                <img src={crop.url} alt="" draggable={false} />
+                <div
+                  className="crop-box"
+                  style={{
+                    left: `${(crop.rect.x / crop.pixels.width) * 100}%`,
+                    top: `${(crop.rect.y / crop.pixels.height) * 100}%`,
+                    width: `${(crop.rect.w / crop.pixels.width) * 100}%`,
+                    height: `${(crop.rect.h / crop.pixels.height) * 100}%`,
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    (event.currentTarget.parentElement as HTMLElement).setPointerCapture(event.pointerId);
+                    cropDrag.current = { x: event.clientX, y: event.clientY, rect: crop.rect, mode: "move" };
+                  }}
+                >
+                  <span
+                    className="crop-handle"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      (event.currentTarget.closest(".crop-frame") as HTMLElement).setPointerCapture(event.pointerId);
+                      cropDrag.current = { x: event.clientX, y: event.clientY, rect: crop.rect, mode: "resize" };
+                    }}
+                  />
+                </div>
+              </div>
             </div>
             <div className="inline" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button type="button" className="ghost" onClick={() => setCrop(null)}>取消</button>
