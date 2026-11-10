@@ -215,6 +215,13 @@ export default function BeadStudio() {
   brushRef.current = brushHex;
 
   const notify = useCallback((text: string) => setMessage(text), []);
+  const [note, setNote] = useState<string | null>(null);
+  const beforeGridRef = useRef<GridCell[][] | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const timer = window.setTimeout(() => setNote(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [note]);
 
   const applyGrid = useCallback((next: GridCell[][]) => {
     gridRef.current = next;
@@ -334,8 +341,15 @@ export default function BeadStudio() {
           undoRef.current = [];
           redoRef.current = [];
           bumpHist();
+          const before = beforeGridRef.current;
+          beforeGridRef.current = null;
           applyGrid(next);
           setMessage(null);
+          if (before && before.length === next.length && before[0]?.length === next[0]?.length) {
+            let changed = 0;
+            next.forEach((row, r) => row.forEach((cell, c) => { if (cell.hex !== before[r][c].hex) changed++; }));
+            setNote(changed === 0 ? "这张图色块很平整，换这个设置图纸没有变化" : `已重新生成，${changed.toLocaleString()} 格颜色有变化`);
+          }
         } catch (error) {
           if (seq !== runRef.current) return;
           notify(error instanceof Error ? error.message : "生成失败");
@@ -935,13 +949,20 @@ export default function BeadStudio() {
       { id: "simple", name: "简洁" },
     ];
     return (
-      <div className="chips">
-        {styles.map((item) => (
-          <button key={item.id} type="button" className="chip" data-on={styleId === item.id} onClick={() => applyStyle(item.id)}>
-            {item.name}
-          </button>
-        ))}
-        {styleId === "custom" && <span className="chip" data-on="true">自定义</span>}
+      <div>
+        <div className="chips">
+          {styles.map((item) => (
+            <button key={item.id} type="button" className="chip" data-on={styleId === item.id} onClick={() => applyStyle(item.id)}>
+              {item.name}
+            </button>
+          ))}
+        </div>
+        {styleId === "custom" && (
+          <p className="style-note">
+            <span className="style-badge">自定义</span>
+            已手动调过参数，点上面的风格可恢复预设
+          </p>
+        )}
       </div>
     );
   }
@@ -979,19 +1000,30 @@ export default function BeadStudio() {
   }
 
   function AdvancedFields() {
+    const pick = (next: { mode?: PixelMode; metric?: DistanceMetric }) => {
+      if ((next.mode ?? mode) === mode && (next.metric ?? metric) === metric) return;
+      beforeGridRef.current = gridRef.current;
+      if (next.mode) setMode(next.mode);
+      if (next.metric) setMetric(next.metric);
+    };
     return (
       <div>
-        <div className="chips" style={{ marginBottom: 12 }}>
-          <button type="button" className="chip" data-on={mode === "dominant"} onClick={() => setMode("dominant")}>主色</button>
-          <button type="button" className="chip" data-on={mode === "average"} onClick={() => setMode("average")}>平均色</button>
-        </div>
+        <p className="row-label adv-label">取色方式</p>
         <div className="chips">
-          <button type="button" className="chip" data-on={metric === "oklab"} onClick={() => setMetric("oklab")}>Oklab</button>
-          <button type="button" className="chip" data-on={metric === "ciede2000"} onClick={() => setMetric("ciede2000")}>CIEDE2000</button>
+          <button type="button" className="chip" data-on={mode === "dominant"} onClick={() => pick({ mode: "dominant" })}>主色</button>
+          <button type="button" className="chip" data-on={mode === "average"} onClick={() => pick({ mode: "average" })}>平均色</button>
         </div>
+        <p className="adv-hint">主色边缘清晰，适合卡通和像素画；平均色过渡更柔和，适合照片。</p>
+        <p className="row-label adv-label">色差算法</p>
+        <div className="chips">
+          <button type="button" className="chip" data-on={metric === "oklab"} onClick={() => pick({ metric: "oklab" })}>Oklab</button>
+          <button type="button" className="chip" data-on={metric === "ciede2000"} onClick={() => pick({ metric: "ciede2000" })}>CIEDE2000</button>
+        </div>
+        <p className="adv-hint">CIEDE2000 更接近人眼判断，计算稍慢。色块平整的图切换后可能没有变化。</p>
       </div>
     );
   }
+
 
   function ColorList() {
     return (
@@ -1295,7 +1327,7 @@ export default function BeadStudio() {
         </section>
       </div>
       {hover && <div className="hover-tip" style={{ left: hover.x, top: hover.y }}>{hover.text}</div>}
-      {message && <div className="hover-tip" style={{ position: "fixed", top: 64, left: "50%", transform: "translateX(-50%)" }}>{message}</div>}
+      {(message ?? note) && <div className="hover-tip" style={{ position: "fixed", top: 64, left: "50%", transform: "translateX(-50%)" }}>{message ?? note}</div>}
       {pickerOpen && (
         <div className="modal-back" onClick={() => setPickerOpen(false)}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
