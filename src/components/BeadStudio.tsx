@@ -423,6 +423,7 @@ export default function BeadStudio() {
       }
       if (typing) return;
       const key = event.key.toLowerCase();
+      if (key === "v") setTool("view");
       if (key === "b") activateToolRef.current("brush");
       if (key === "g") activateToolRef.current("fill");
       if (key === "e") setTool("eraser");
@@ -1069,12 +1070,12 @@ export default function BeadStudio() {
     );
   }
 
-  const tools: { id: Tool; label: string; icon: ReactNode }[] = [
-    { id: "view", label: "查看", icon: <Eye size={16} /> },
-    { id: "brush", label: "画笔", icon: <Brush size={16} /> },
-    { id: "fill", label: "填充", icon: <PaintBucket size={16} /> },
-    { id: "eraser", label: "橡皮", icon: <Eraser size={16} /> },
-    { id: "pick", label: "吸管", icon: <Pipette size={16} /> },
+  const tools: { id: Tool; label: string; key: string; icon: ReactNode }[] = [
+    { id: "view", label: "查看 · 拖动移动图纸", key: "V", icon: <Eye size={16} /> },
+    { id: "brush", label: "画笔", key: "B", icon: <Brush size={16} /> },
+    { id: "fill", label: "填充 · 换掉相连的同色", key: "G", icon: <PaintBucket size={16} /> },
+    { id: "eraser", label: "橡皮", key: "E", icon: <Eraser size={16} /> },
+    { id: "pick", label: "吸管 · 取图上的颜色", key: "I", icon: <Pipette size={16} /> },
   ];
 
   if (!grid && !crop && !imageLabel) {
@@ -1205,11 +1206,11 @@ export default function BeadStudio() {
           {processing && <div className="progress"><b style={{ width: `${Math.round(progress * 100)}%` }} /></div>}
           <div className="tool-pill">
             {tools.map((item) => (
-              <button key={item.id} type="button" className="icon-btn" title={item.label} data-on={tool === item.id} onClick={() => activateTool(item.id)}>{item.icon}</button>
+              <button key={item.id} type="button" className="icon-btn" aria-label={item.label} data-tip={`${item.label}　${item.key}`} data-on={tool === item.id} onClick={() => activateTool(item.id)}>{item.icon}</button>
             ))}
-            <button type="button" className="icon-btn" title="撤销" onClick={undo} disabled={undoRef.current.length === 0}><Undo2 size={16} /></button>
-            <button type="button" className="icon-btn" title="重做" onClick={redo} disabled={redoRef.current.length === 0}><Redo2 size={16} /></button>
-            <button type="button" className="icon-btn" title="当前颜色" onClick={() => setPickerOpen(true)}>
+            <button type="button" className="icon-btn" aria-label="撤销" data-tip="撤销　⌘Z / Ctrl+Z" onClick={undo} disabled={undoRef.current.length === 0}><Undo2 size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="重做" data-tip="重做　⇧⌘Z / Ctrl+Y" onClick={redo} disabled={redoRef.current.length === 0}><Redo2 size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="当前颜色" data-tip="当前颜色 · 点击换色" onClick={() => setPickerOpen(true)}>
               <i className="swatch" style={{ background: brushHex ?? "#fff" }} />
             </button>
           </div>
@@ -1230,16 +1231,16 @@ export default function BeadStudio() {
             </div>
           )}
           <div className="view-pill">
-            <button type="button" className="icon-btn" onClick={() => zoomBy(0.9)}><Minus size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="缩小" data-tip="缩小" onClick={() => zoomBy(0.9)}><Minus size={16} /></button>
             <span className="muted" style={{ width: 48, textAlign: "center" }}>{zoomPct}%</span>
-            <button type="button" className="icon-btn" onClick={() => zoomBy(1.1)}><Plus size={16} /></button>
-            <button type="button" className="icon-btn" title="适应" onClick={fit}><Grid3x3 size={16} /></button>
-            <button type="button" className="icon-btn" data-on={shape === "round"} title="圆豆" onClick={() => setShape("round")}><span style={{ width: 12, height: 12, borderRadius: 99, border: "2px solid currentColor", display: "block" }} /></button>
-            <button type="button" className="icon-btn" data-on={shape === "square"} title="方格" onClick={() => setShape("square")}><Square size={16} /></button>
-            <button type="button" className="icon-btn" data-on={showGrid} title="网格" onClick={() => setShowGrid((value) => !value)}><Grid3x3 size={16} /></button>
-            <button type="button" className="icon-btn" data-on={showCodes} title="色号" onClick={() => setShowCodes((value) => !value)}>字</button>
-            <button type="button" className="icon-btn" data-on={showBoard} title="板线" onClick={() => setShowBoard((value) => !value)}>29</button>
-            <button type="button" className="icon-btn" data-on={compareHold} title="对比原图" onPointerDown={() => setCompareHold(true)} onPointerUp={() => setCompareHold(false)} onPointerLeave={() => setCompareHold(false)}><Eye size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="放大" data-tip="放大" onClick={() => zoomBy(1.1)}><Plus size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="适应屏幕" data-tip="适应屏幕" onClick={fit}><Grid3x3 size={16} /></button>
+            <button type="button" className="icon-btn" data-on={shape === "round"} aria-label="圆豆显示" data-tip="圆豆显示" onClick={() => setShape("round")}><span style={{ width: 12, height: 12, borderRadius: 99, border: "2px solid currentColor", display: "block" }} /></button>
+            <button type="button" className="icon-btn" data-on={shape === "square"} aria-label="方格显示" data-tip="方格显示" onClick={() => setShape("square")}><Square size={16} /></button>
+            <button type="button" className="icon-btn" data-on={showGrid} aria-label="显示网格" data-tip="显示网格" onClick={() => setShowGrid((value) => !value)}><Grid3x3 size={16} /></button>
+            <button type="button" className="icon-btn" data-on={showCodes} aria-label="显示色号" data-tip="显示色号" onClick={() => setShowCodes((value) => !value)}>字</button>
+            <button type="button" className="icon-btn" data-on={showBoard} aria-label="显示 29 格板线" data-tip="显示 29 格板线" onClick={() => setShowBoard((value) => !value)}>29</button>
+            <button type="button" className="icon-btn" data-on={compareHold} aria-label="按住对比原图" data-tip="按住对比原图" onPointerDown={() => setCompareHold(true)} onPointerUp={() => setCompareHold(false)} onPointerLeave={() => setCompareHold(false)}><Eye size={16} /></button>
           </div>
         </main>
         <aside className="panel right">

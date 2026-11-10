@@ -137,6 +137,37 @@ button { cursor: pointer; }
 .tool-pill { top: 12px; left: 50%; transform: translateX(-50%); }
 .view-pill { left: 12px; bottom: 12px; }
 
+/* Hover hints for the canvas toolbars (pointer devices only). */
+@media (hover: hover) {
+  .tool-pill [data-tip], .view-pill [data-tip] { position: relative; }
+  .tool-pill [data-tip]::after, .view-pill [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    z-index: 10;
+    padding: 5px 9px;
+    border-radius: 8px;
+    background: rgba(42, 36, 32, 0.92);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.3;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 2px);
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  .tool-pill [data-tip]::after { top: calc(100% + 8px); }
+  .view-pill [data-tip]::after { bottom: calc(100% + 8px); }
+  .view-pill [data-tip]:first-child::after { left: 0; transform: translate(0, 2px); }
+  .tool-pill [data-tip]:hover::after, .view-pill [data-tip]:hover::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    transition-delay: .25s;
+  }
+  .view-pill [data-tip]:first-child:hover::after { transform: translate(0, 0); }
+}
+
 .icon-btn, .chip, .primary, .ghost, .stepper-btn {
   border: 1px solid transparent;
   background: transparent;
