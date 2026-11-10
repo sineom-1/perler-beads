@@ -1083,7 +1083,7 @@ export default function BeadStudio() {
     { id: "pick", label: "吸管", icon: <Pipette size={16} /> },
   ];
 
-  if (!grid && !crop) {
+  if (!grid && !crop && !imageLabel) {
     return (
       <div
         className="shell empty"
