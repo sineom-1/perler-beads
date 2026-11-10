@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "拼豆图纸生成器",
-  description: "上传图片，一键生成可打印的拼豆图纸、色号与采购清单。支持 MARD、COCO、漫漫、盼盼、咪小窝。",
+  title: "数豆格 - 拼豆图纸在线生成与 1:1 分板打印工具",
+  description: "数豆格：传图生成拼豆图纸，支持 291 色号对照、单色高亮与 1:1 分板打印 PDF。支持 MARD、COCO、漫漫、盼盼、咪小窝，图片只在本机处理。",
+  applicationName: "数豆格",
 };
 
 export const viewport: Viewport = {

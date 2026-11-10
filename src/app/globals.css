@@ -388,6 +388,8 @@ select.num, .select {
 }
 .empty-card h1 { font-size: 32px; line-height: 1.25; margin: 12px 0; font-weight: 700; }
 .empty-card p { color: var(--text-2); margin: 0 0 20px; }
+.empty-card p.tagline { color: var(--text); font-size: 16px; margin: 0 0 8px; }
+.empty-card p.tagline + p.muted { font-size: 13px; }
 .beads { display: grid; grid-template-columns: repeat(3, 18px); gap: 8px; justify-content: center; }
 .beads i { width: 18px; height: 18px; border-radius: 999px; display: block; }
 

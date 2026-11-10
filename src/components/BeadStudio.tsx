@@ -817,7 +817,7 @@ export default function BeadStudio() {
       mirror: exportMirror,
       codeFor: (hex) => displayCode(hex, colorSystem),
     });
-    downloadCanvas(canvas, `拼豆图纸-${cols}x${rows}-${colorSystem}.png`);
+    downloadCanvas(canvas, `数豆格-${cols}x${rows}-${colorSystem}.png`);
   }
 
   async function downloadPdf() {
@@ -839,7 +839,7 @@ export default function BeadStudio() {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.href = url;
-      link.download = `拼豆图纸-1比1打印-${cols}x${rows}-${colorSystem}.pdf`;
+      link.download = `数豆格-1比1打印-${cols}x${rows}-${colorSystem}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1110,8 +1110,9 @@ export default function BeadStudio() {
               <i key={color} style={{ background: color }} />
             ))}
           </div>
-          <h1>照片一键变拼豆图纸</h1>
-          <p>支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 · 图片只在本机处理，不会上传</p>
+          <h1>数豆格</h1>
+          <p className="tagline">传图生成拼豆图纸，<br />支持 291 色号对照、单色高亮与 1:1 分板打印 PDF</p>
+          <p className="muted">支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 · 图片只在本机处理，不会上传</p>
           <div className="inline" style={{ justifyContent: "center" }}>
             <button type="button" className="primary" onClick={() => fileRef.current?.click()}>上传图片</button>
             <button type="button" className="ghost" onClick={() => void loadSample()}>试试示例</button>
@@ -1147,7 +1148,7 @@ export default function BeadStudio() {
               <i key={color} style={{ background: color, width: 8, height: 8 }} />
             ))}
           </span>
-          <strong>拼豆图纸</strong>
+          <strong>数豆格</strong>
         </div>
         <div className="stepper">
           <span className="on">① 选图</span>

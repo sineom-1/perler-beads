@@ -108,7 +108,7 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
   context.font = `700 28px ${FONT}`;
   context.textBaseline = "middle";
   context.textAlign = "left";
-  context.fillText("拼豆图纸", 84, 34);
+  context.fillText("数豆格 · 拼豆图纸", 84, 34);
   context.font = `500 16px ${FONT}`;
   context.fillStyle = "rgba(255,253,248,0.82)";
   context.fillText(`${cols} × ${rows} 格 · ${systemLabel} · ${paletteLabel} · ${sorted.length} 色 · ${total} 颗`, 84, 60);
@@ -242,7 +242,7 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.fillText(`拼豆图纸 · ${new Date().toLocaleDateString("zh-CN")}${options.mirror ? " · 已镜像" : ""}`, margin, height - 18);
+  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}${options.mirror ? " · 已镜像" : ""}`, margin, height - 18);
   context.textAlign = "right";
   context.fillText(SOURCE_NOTE, width - margin, height - 18);
   return canvas;
@@ -305,7 +305,7 @@ export function renderShoppingListCanvas(options: {
   context.fillStyle = "#A0968D";
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
-  context.fillText(`拼豆图纸 · ${new Date().toLocaleDateString("zh-CN")}`, 24, height - 22);
+  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}`, 24, height - 22);
   return canvas;
 }
 

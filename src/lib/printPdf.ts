@@ -222,7 +222,7 @@ function drawCover(
   const rows = grid.length;
   const cols = grid[0].length;
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
-  text(context, "拼豆图纸 · 1:1 打印版", mm(MARGIN_MM), mm(MARGIN_MM + 3), 6, { weight: 700 });
+  text(context, "数豆格 · 1:1 打印版", mm(MARGIN_MM), mm(MARGIN_MM + 3), 6, { weight: 700 });
   text(
     context,
     `${cols} × ${rows} 格 · ${options.systemLabel} · ${options.paletteLabel} · ${entries.length} 色 · ${total} 颗 · 每页一块 ${options.board}×${options.board} 板，共 ${boardLabels.size} 块`,
