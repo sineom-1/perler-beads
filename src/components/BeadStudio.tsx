@@ -38,6 +38,8 @@ import { aspectCrop, autoRows, clamp, cropPixels, emptyGrid, fullRect, pixelsToU
 import { CROP_RATIOS, PLAIN_LOOK, STYLE_PRESETS, USE_PRESETS, sameLook, type UseId, type Look, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
 import { SourceNote, Tip } from "./studio/ui";
 import { ExportModal } from "./studio/ExportModal";
+import { TemplateGallery } from "./studio/TemplateGallery";
+import { templatePixels } from "@/lib/templates";
 import { AdvancedFields, BrandFields, UseFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
 
 
@@ -78,6 +80,7 @@ export default function BeadStudio() {
   const [minCount, setMinCount] = useState(0);
   const [look, setLook] = useState<Look>(PLAIN_LOOK);
   const [doneColors, setDoneColors] = useState<string[]>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [pitchMm, setPitchMm] = useState(5);
   const [pdfBoard, setPdfBoard] = useState(29);
   const [pdfBusy, setPdfBusy] = useState<number | null>(null);
@@ -467,6 +470,24 @@ export default function BeadStudio() {
     const response = await fetch(assetUrl("/samples/demo.png"));
     const blob = await response.blob();
     await openCrop(new File([blob], "示例.png", { type: "image/png" }));
+  }
+
+  function loadTemplate(name: string, templateRows: string[]) {
+    const pixels = templatePixels(templateRows);
+    setTemplatesOpen(false);
+    blankRef.current = false;
+    imageRef.current = pixels;
+    originalRef.current = pixels;
+    excludedRef.current = [];
+    setExcluded([]);
+    removeBgRef.current = false;
+    setRemoveBg(false);
+    applyStyle("pixel");
+    setCols(pixels.width);
+    setRows(pixels.height);
+    setImageLabel(`模板 · ${name}`);
+    rememberImage(pixels);
+    setBuildToken((value) => value + 1);
   }
 
   function makeBlank() {
@@ -950,16 +971,18 @@ export default function BeadStudio() {
           </div>
           <h1>数豆格</h1>
           <p className="tagline">传图生成拼豆图纸，<br />支持 291 色号对照、单色高亮与 1:1 分板打印 PDF</p>
-          <p className="muted">支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 · 图片只在本机处理，不会上传</p>
+          <p className="muted">支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 / Artkal / Perler · 图片只在本机处理，不会上传</p>
           <div className="inline" style={{ justifyContent: "center" }}>
             <button type="button" className="primary" onClick={() => fileRef.current?.click()}>上传图片</button>
             <button type="button" className="ghost" onClick={() => void loadSample()}>试试示例</button>
+            <button type="button" className="ghost" onClick={() => setTemplatesOpen(true)}>原创模板</button>
             <button type="button" className="ghost" onClick={makeBlank}>空白画布</button>
           </div>
           <p className="muted" style={{ marginTop: 16 }}>拖放图片到此处，或按 Ctrl/Cmd+V 粘贴</p>
         </div>
         <SourceNote style={{ position: "fixed", bottom: 12, left: 0, right: 0, textAlign: "center" }} />
         {message && <p className="hover-tip" style={{ position: "fixed", bottom: 24, left: "50%" }}>{message}</p>}
+        {templatesOpen && <TemplateGallery onClose={() => setTemplatesOpen(false)} onPick={loadTemplate} />}
       </div>
     );
   }
@@ -1015,6 +1038,7 @@ export default function BeadStudio() {
                   if (!pixels) return;
                   setCrop({ pixels, rect: fullRect(pixels), ratio: "full", url: pixelsToUrl(pixels), name: imageLabel ?? "图片" });
                 }}><Crop size={14} /> 裁剪</button>
+                <button type="button" className="ghost" style={{ marginTop: 8, marginLeft: 6, minHeight: 32, padding: "0 12px" }} onClick={() => setTemplatesOpen(true)}>模板</button>
               </div>
             </div>
             <section className="section">
@@ -1231,6 +1255,7 @@ export default function BeadStudio() {
           </div>
         </div>
       )}
+      {templatesOpen && <TemplateGallery onClose={() => setTemplatesOpen(false)} onPick={loadTemplate} />}
       {exportOpen && (
         <ExportModal
           onClose={() => setExportOpen(false)}
