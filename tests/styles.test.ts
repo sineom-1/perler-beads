@@ -85,3 +85,15 @@ test("difficulty grows with size and colors", () => {
   assert.equal(assessDifficulty(small).level, "easy");
   assert.equal(assessDifficulty(busy).level, "hard");
 });
+
+test("use presets point at real styles and sensible widths", async () => {
+  const { USE_PRESETS } = await import("../src/components/studio/constants");
+  const { systemPitchMm } = await import("../src/lib/palette");
+  for (const preset of Object.values(USE_PRESETS)) {
+    assert.ok(STYLE_PRESETS[preset.style], preset.name);
+    assert.ok(preset.cols >= 8 && preset.cols <= 180);
+  }
+  assert.equal(systemPitchMm("Artkal C"), 2.6);
+  assert.equal(systemPitchMm("Perler"), 5);
+  assert.equal(systemPitchMm("MARD"), undefined);
+});

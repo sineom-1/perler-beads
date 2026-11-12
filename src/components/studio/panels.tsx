@@ -3,7 +3,7 @@ import { Minus, Plus } from "lucide-react";
 import type { DistanceMetric, PaletteColor, PixelMode } from "@/lib/color";
 import { BRAND_SYSTEMS, COMMUNITY_SYSTEMS, colorDetail, displayCode, paletteChoicesFor, systemNote, type ColorSystem } from "@/lib/palette";
 import type { ColorCount } from "@/lib/pixelate";
-import { BOARDS, STYLE_PRESETS, type Look, type StyleId } from "./constants";
+import { BOARDS, STYLE_PRESETS, USE_PRESETS, type Look, type StyleId, type UseId } from "./constants";
 import type { DifficultyReport } from "@/lib/stylize";
 import { Tip } from "./ui";
 
@@ -33,6 +33,22 @@ export function BrandFields({ system, paletteId, onSystem, onPalette }: {
         ))}
       </select>
       <p className="brand-note" style={{ fontSize: 12, opacity: 0.7, lineHeight: 1.5, margin: 0 }}>{systemNote(system)}</p>
+    </div>
+  );
+}
+
+export function UseFields({ onUse, pitchMm }: { onUse: (id: UseId) => void; pitchMm: number }) {
+  const ids = Object.keys(USE_PRESETS) as UseId[];
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>按用途一键设置 <Tip text="设置宽度和风格，可以再手动调。尺寸是建议值。" /></div>
+      <div className="chips">
+        {ids.map((id) => (
+          <button key={id} type="button" className="chip" title={`${USE_PRESETS[id].hint}，成品宽约 ${((USE_PRESETS[id].cols * pitchMm) / 10).toFixed(1)} 厘米`} onClick={() => onUse(id)}>
+            {USE_PRESETS[id].name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -243,6 +259,8 @@ export function ColorList({
   setReplaceFrom,
   activePalette,
   onReplaceAll,
+  done,
+  onToggleDone,
 }: {
   counts: ColorCount[];
   sortedCounts: ColorCount[];
@@ -261,7 +279,12 @@ export function ColorList({
   setReplaceFrom: (hex: string | null) => void;
   activePalette: PaletteColor[];
   onReplaceAll: (fromHex: string, toHex: string) => void;
+  done: string[];
+  onToggleDone: (hex: string) => void;
 }) {
+  const doneSet = new Set(done);
+  const doneBeads = counts.reduce((sum, item) => sum + (doneSet.has(item.hex) ? item.count : 0), 0);
+  const doneColors = counts.filter((item) => doneSet.has(item.hex)).length;
   return (
     <div>
       <div className="inline" style={{ justifyContent: "space-between", marginBottom: 8 }}>
@@ -271,7 +294,17 @@ export function ColorList({
           <option value="code">按色号</option>
         </select>
       </div>
-      <p className="muted" style={{ margin: "0 0 8px" }}>点一下颜色，画布只亮这一色，方便一色一色地拼。</p>
+      <p className="muted" style={{ margin: "0 0 8px" }}>点一下颜色，画布只亮这一色，方便一色一色地拼。拼完一色就勾上。</p>
+      {total > 0 && (
+        <div className="progress-box" style={{ marginBottom: 8 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+            拼制进度 {doneColors}/{counts.length} 色 · {doneBeads}/{total} 颗（{Math.round((doneBeads / total) * 100)}%）
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: "var(--surface-2)", overflow: "hidden" }}>
+            <div style={{ width: `${(doneBeads / total) * 100}%`, height: "100%", background: "var(--accent, #c2412d)" }} />
+          </div>
+        </div>
+      )}
       <input className="select" placeholder="搜索色号" value={colorQuery} onChange={(event) => setColorQuery(event.target.value)} />
       <div style={{ marginTop: 8 }}>
         {sortedCounts.map((item) => {
@@ -284,6 +317,7 @@ export function ColorList({
                 type="button"
                 className="color-row"
                 data-on={highlightHex === item.hex}
+                style={doneSet.has(item.hex) ? { opacity: 0.5 } : undefined}
                 onClick={() => onPickColor(item.hex)}
               >
                 <i className="swatch" style={{ background: item.hex }} />
@@ -292,6 +326,10 @@ export function ColorList({
                 <span className="muted">{total ? Math.round((item.count / total) * 100) : 0}%</span>
               </button>
               <div className="inline" style={{ padding: "0 8px 8px" }}>
+                <label className="inline muted" style={{ gap: 4 }}>
+                  <input type="checkbox" checked={doneSet.has(item.hex)} onChange={() => onToggleDone(item.hex)} />
+                  拼完
+                </label>
                 <button type="button" className="ghost" style={{ minHeight: 32 }} onClick={() => onExclude(item.hex)}>排除</button>
                 <button type="button" className="ghost" style={{ minHeight: 32 }} onClick={() => setReplaceFrom(item.hex)}>全部替换</button>
               </div>

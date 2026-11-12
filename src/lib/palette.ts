@@ -112,6 +112,13 @@ export function paletteLabel(system: ColorSystem, paletteId: string): string {
   return paletteChoicesFor(system).find((choice) => choice.id === paletteId)?.name ?? "";
 }
 
+/** Bead pitch implied by the brand series, when the system pins one down. */
+export function systemPitchMm(system: ColorSystem): number | undefined {
+  const brand = brandBySystem(system);
+  if (!brand) return undefined;
+  return brand.series.includes("2.6mm") ? 2.6 : 5;
+}
+
 /** One-line provenance note shown next to the brand switcher. */
 export function systemNote(system: ColorSystem): string {
   const brand = brandBySystem(system);

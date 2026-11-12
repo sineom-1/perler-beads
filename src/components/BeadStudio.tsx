@@ -12,7 +12,9 @@ import { assessDifficulty } from "@/lib/stylize";
 import {
   compareCodes,
   isCommunitySystem,
+  colorDetail,
   paletteForSystem,
+  systemPitchMm,
   paletteLabel as labelForPalette,
   displayCode,
   getColorByHex,
@@ -33,9 +35,10 @@ import {
 } from "@/lib/pixelate";
 import { BASE_CELL, drawViewport, fitView, hitCell } from "@/lib/preview";
 import { aspectCrop, autoRows, clamp, cropPixels, emptyGrid, fullRect, pixelsToUrl } from "@/lib/imageOps";
-import { CROP_RATIOS, PLAIN_LOOK, STYLE_PRESETS, sameLook, type Look, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
+import { CROP_RATIOS, PLAIN_LOOK, STYLE_PRESETS, USE_PRESETS, sameLook, type UseId, type Look, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
 import { SourceNote, Tip } from "./studio/ui";
-import { AdvancedFields, BrandFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
+import { ExportModal } from "./studio/ExportModal";
+import { AdvancedFields, BrandFields, UseFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
 
 
 export default function BeadStudio() {
@@ -74,7 +77,9 @@ export default function BeadStudio() {
   const [maxColors, setMaxColors] = useState(0);
   const [minCount, setMinCount] = useState(0);
   const [look, setLook] = useState<Look>(PLAIN_LOOK);
+  const [doneColors, setDoneColors] = useState<string[]>([]);
   const [pitchMm, setPitchMm] = useState(5);
+  const [pdfBoard, setPdfBoard] = useState(29);
   const [pdfBusy, setPdfBusy] = useState<number | null>(null);
   const [grid, setGrid] = useState<GridCell[][] | null>(null);
   const [counts, setCounts] = useState<ColorCount[]>([]);
@@ -250,6 +255,7 @@ export default function BeadStudio() {
           const before = beforeGridRef.current;
           beforeGridRef.current = null;
           applyGrid(next);
+          setDoneColors([]);
           setMessage(null);
           if (before && before.length === next.length && before[0]?.length === next[0]?.length) {
             let changed = 0;
@@ -507,6 +513,13 @@ export default function BeadStudio() {
     }
   }
 
+  function applyUse(id: UseId) {
+    const preset = USE_PRESETS[id];
+    applyStyle(preset.style);
+    updateCols(preset.cols);
+    notify(`${preset.name}：${preset.hint}。`);
+  }
+
   function updateLook(patch: Partial<Look>) {
     setLook((previous) => ({ ...previous, ...patch }));
   }
@@ -754,7 +767,7 @@ export default function BeadStudio() {
       const { blob, pages } = await renderPrintPdf({
         grid: current,
         pitchMm,
-        board: 29,
+        board: pdfBoard,
         mirror: exportMirror,
         systemLabel: colorSystem,
         paletteLabel,
@@ -792,8 +805,13 @@ export default function BeadStudio() {
   }
 
   async function copyList() {
-    const lines = sortedCounts.map((item) => `${colorSystem} ${displayCode(item.hex, colorSystem)} ×${item.count}`);
-    lines.push(`合计 ${total}`);
+    const lines = sortedCounts.map((item) => {
+      const detail = colorDetail(item.hex, colorSystem);
+      const extra = [detail.name, detail.finish].filter(Boolean).join(" ");
+      return `${colorSystem} ${displayCode(item.hex, colorSystem)}${extra ? ` ${extra}` : ""} ×${item.count}`;
+    });
+    lines.push(`合计 ${total} 颗，${sortedCounts.length} 色。建议每色多备 10% 左右。`);
+    lines.push("屏幕色仅供参考，以实物为准。");
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
       notify("清单已复制。");
@@ -837,6 +855,8 @@ export default function BeadStudio() {
   function pickSystem(next: ColorSystem) {
     const sameFamily = isCommunitySystem(next) && isCommunitySystem(colorSystem);
     setColorSystem(next);
+    const pitch = systemPitchMm(next);
+    if (pitch) setPitchMm(pitch);
     if (sameFamily) return;
     setExcluded([]);
     setPaletteId(paletteForSystem(next, paletteId));
@@ -849,7 +869,10 @@ export default function BeadStudio() {
   );
 
   const sizeFields = (
+    <>
+    <UseFields onUse={applyUse} pitchMm={pitchMm} />
     <SizeFields cols={cols} rows={rows} total={total} lockRatio={lockRatio} onLockRatio={setLockRatio} onCols={updateCols} onRows={updateRows} />
+    </>
   );
   const styleFields = <StyleFields styleId={styleId} onStyle={applyStyle} look={look} onLook={updateLook} difficulty={difficulty} />;
   const cleanFields = (
@@ -885,6 +908,8 @@ export default function BeadStudio() {
       setReplaceFrom={setReplaceFrom}
       activePalette={activePalette}
       onReplaceAll={replaceAll}
+      done={doneColors}
+      onToggleDone={(hex) => setDoneColors((previous) => (previous.includes(hex) ? previous.filter((item) => item !== hex) : [...previous, hex]))}
     />
   );
 
@@ -1207,53 +1232,32 @@ export default function BeadStudio() {
         </div>
       )}
       {exportOpen && (
-        <div className="modal-back" onClick={() => setExportOpen(false)}>
-          <div className="modal export-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>导出</h3>
-            <div className="export-layout">
-              <div className="export-preview" ref={exportPreviewRef}>
-                <canvas ref={exportCanvasRef} style={exportMirror ? { transform: "scaleX(-1)" } : undefined} />
-              </div>
-              <div className="export-options">
-                <div className="chips">
-                  <button type="button" className="chip" data-on={exportCodes} onClick={() => setExportCodes((value) => !value)}>显示色号</button>
-                  <button type="button" className="chip" data-on={exportGrid} onClick={() => setExportGrid((value) => !value)}>网格线</button>
-                  <button type="button" className="chip" data-on={exportCoords} onClick={() => setExportCoords((value) => !value)}>坐标</button>
-                  <button type="button" className="chip" data-on={exportShape === "round"} onClick={() => setExportShape((value) => (value === "round" ? "square" : "round"))}>{exportShape === "round" ? "圆豆" : "方格"}</button>
-                </div>
-                <div className="mirror-box" data-on={exportMirror}>
-                  <label className="inline">
-                    <input type="checkbox" checked={exportMirror} onChange={(event) => setExportMirror(event.target.checked)} />
-                    <strong>镜像（左右翻转）</strong>
-                  </label>
-                  <p className="muted">如果你的做法会把作品翻过来烫（比如贴美纹纸翻面），成品会左右颠倒。图里有文字或分左右时，记得勾上。</p>
-                </div>
-                <div className="pdf-box">
-                  <strong>1:1 打印 PDF</strong>
-                  <p className="muted">每页一块 29×29 板，按实际大小打印后可以直接垫在板下面拼。每页带行列编号，每 5 格、10 格一条粗线。</p>
-                  <div className="inline" style={{ flexWrap: "wrap" }}>
-                    <button type="button" className="chip" data-on={pitchMm === 5} onClick={() => setPitchMm(5)}>5 mm 豆</button>
-                    <button type="button" className="chip" data-on={pitchMm === 2.6} onClick={() => setPitchMm(2.6)}>2.6 mm 迷你豆</button>
-                    <label className="inline muted">
-                      豆距
-                      <input className="num" type="number" min={2} max={6} step={0.1} value={pitchMm} style={{ width: 64 }} onChange={(event) => { const value = Number(event.target.value); if (value >= 2 && value <= 6) setPitchMm(Math.round(value * 10) / 10); }} />
-                      mm
-                    </label>
-                  </div>
-                  <p className="muted">不确定就用尺子量板上 10 个钉子的距离，再除以 10。</p>
-                </div>
-                <div className="export-actions">
-                  <button type="button" className="primary" disabled={pdfBusy !== null} onClick={() => void downloadPdf()}>
-                    {pdfBusy === null ? "下载 1:1 打印 PDF" : `生成中 ${Math.round(pdfBusy * 100)}%`}
-                  </button>
-                  <button type="button" className="ghost" onClick={downloadPattern}>下载图纸 PNG</button>
-                  <button type="button" className="ghost" onClick={downloadList}>下载采购清单 PNG</button>
-                  <button type="button" className="ghost" onClick={() => void copyList()}>复制清单文本</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ExportModal
+          onClose={() => setExportOpen(false)}
+          previewRef={exportPreviewRef}
+          canvasRef={exportCanvasRef}
+          codes={exportCodes}
+          setCodes={setExportCodes}
+          grid={exportGrid}
+          setGrid={setExportGrid}
+          coords={exportCoords}
+          setCoords={setExportCoords}
+          shape={exportShape}
+          setShape={setExportShape}
+          mirror={exportMirror}
+          setMirror={setExportMirror}
+          pitchMm={pitchMm}
+          setPitchMm={setPitchMm}
+          board={pdfBoard}
+          setBoard={setPdfBoard}
+          cols={cols}
+          rows={rows}
+          pdfBusy={pdfBusy}
+          onPdf={() => void downloadPdf()}
+          onPattern={downloadPattern}
+          onList={downloadList}
+          onCopy={() => void copyList()}
+        />
       )}
     </div>
   );

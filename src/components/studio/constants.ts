@@ -40,3 +40,14 @@ export function sameLook(a: Look, b: Look): boolean {
   return a.dither === b.dither && a.smooth === b.smooth && a.outline === b.outline && a.trim === b.trim && a.posterize === b.posterize;
 }
 export const SOURCE_URL = "https://github.com/sineom-1/perler-beads";
+
+export type UseId = "magnet" | "keychain" | "coaster" | "pendant" | "mural";
+
+/** What the piece is for: a starting board width and style. Sizes are suggestions, not standards. */
+export const USE_PRESETS: Record<UseId, { name: string; cols: number; style: Exclude<StyleId, "custom">; hint: string }> = {
+  magnet: { name: "冰箱贴", cols: 29, style: "chibi", hint: "一块 29 板，去背景加描边，背面贴磁铁" },
+  keychain: { name: "钥匙扣", cols: 20, style: "chibi", hint: "约 20 格宽，留一格位置打孔穿环" },
+  coaster: { name: "杯垫", cols: 29, style: "simplePixel", hint: "一块 29 板，保留背景铺满，烫平一些更稳" },
+  pendant: { name: "小挂件", cols: 16, style: "lowColor", hint: "16 格左右的小件，颜色越少越好拼" },
+  mural: { name: "多板拼图", cols: 58, style: "photo", hint: "2×2 块 29 板起步，导出 PDF 按页拼" },
+};
