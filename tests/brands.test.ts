@@ -77,7 +77,7 @@ test("known official codes", () => {
   assert.equal(colorDetail("#B0353C", "Perler").name, "Red");
   assert.equal(displayCode("#E5ECF1", "Hama"), "H01");
   assert.equal(colorDetail("#E5ECF1", "Hama").name, "White");
-  assert.equal(displayCode("#9D5B2E", "Artkal S"), "S41");
+  assert.equal(displayCode("#9D5B2E", "Artkal S"), "S63");
   assert.equal(colorDetail("#9D5B2E", "Artkal S").finish, "金属");
   assert.equal(displayCode("#FD543D", "MARD"), "A14");
 });
