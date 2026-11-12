@@ -7,6 +7,7 @@ import type { DistanceMetric, PixelMode } from "@/lib/color";
 import { downloadCanvas, renderPatternCanvas, renderShoppingListCanvas } from "@/lib/exportPng";
 import { decodeImageFile } from "@/lib/imageFile";
 import { renderPrintPdf } from "@/lib/printPdf";
+import { PatternCancelled, requestPattern } from "@/lib/patternClient";
 import {
   COLOR_SYSTEMS,
   PALETTE_CHOICES,
@@ -18,13 +19,10 @@ import {
 } from "@/lib/palette";
 import {
   ERASED_CELL,
-  buildPattern,
   cloneGrid,
   floodFillPaint,
   paintCell,
-  reduceColors,
   remapColor,
-  removeBorderBackground,
   replaceHex,
   tally,
   type ColorCount,
@@ -32,104 +30,11 @@ import {
   type ImagePixels,
 } from "@/lib/pixelate";
 import { BASE_CELL, drawViewport, fitView, hitCell } from "@/lib/preview";
+import { aspectCrop, autoRows, clamp, cropPixels, emptyGrid, fullRect, pixelsToUrl } from "@/lib/imageOps";
+import { CROP_RATIOS, STYLE_PRESETS, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
+import { SourceNote, Tip } from "./studio/ui";
+import { AdvancedFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
 
-type Tool = "view" | "brush" | "fill" | "eraser" | "pick";
-type StyleId = "cartoon" | "pixel" | "photo" | "simple" | "custom";
-type Shape = "round" | "square";
-type CropRect = { x: number; y: number; w: number; h: number };
-type CropRatio = "full" | "1:1" | "3:4" | "4:3";
-const CROP_RATIOS: { key: CropRatio; label: string; aspect: [number, number] | null }[] = [
-  { key: "full", label: "原图", aspect: null },
-  { key: "1:1", label: "1:1", aspect: [1, 1] },
-  { key: "3:4", label: "3:4", aspect: [3, 4] },
-  { key: "4:3", label: "4:3", aspect: [4, 3] },
-];
-type SheetTab = "size" | "style" | "clean" | "colors" | "advanced";
-
-const BOARDS = [16, 29, 48, 58, 87];
-
-const STYLE_PRESETS = {
-  cartoon: { mode: "dominant", metric: "oklab", threshold: 30 },
-  pixel: { mode: "dominant", metric: "oklab", threshold: 0 },
-  photo: { mode: "average", metric: "ciede2000", threshold: 15 },
-  simple: { mode: "dominant", metric: "oklab", threshold: 50 },
-} as const;
-const SOURCE_URL = "https://github.com/sineom-1/perler-beads";
-
-function SourceNote({ style }: { style?: React.CSSProperties }) {
-  return (
-    <p className="source-note" style={style}>
-      <a href={SOURCE_URL} target="_blank" rel="noreferrer">源码与许可</a>
-    </p>
-  );
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function autoRows(columns: number, image: ImagePixels) {
-  return clamp(Math.round(columns * (image.height / image.width)), 8, 180);
-}
-
-function emptyGrid(cols: number, rows: number): GridCell[][] {
-  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ ...ERASED_CELL })));
-}
-
-function pixelsToUrl(pixels: ImagePixels) {
-  const canvas = document.createElement("canvas");
-  canvas.width = pixels.width;
-  canvas.height = pixels.height;
-  const context = canvas.getContext("2d");
-  if (!context) return "";
-  context.putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
-function fullRect(pixels: ImagePixels): CropRect {
-  return { x: 0, y: 0, w: pixels.width, h: pixels.height };
-}
-
-function aspectCrop(pixels: ImagePixels, aw: number, ah: number): CropRect {
-  let w = pixels.width;
-  let h = Math.round((w * ah) / aw);
-  if (h > pixels.height) {
-    h = pixels.height;
-    w = Math.round((h * aw) / ah);
-  }
-  w = Math.max(1, Math.min(pixels.width, w));
-  h = Math.max(1, Math.min(pixels.height, h));
-  return {
-    x: Math.round((pixels.width - w) / 2),
-    y: Math.round((pixels.height - h) / 2),
-    w,
-    h,
-  };
-}
-
-function cropPixels(pixels: ImagePixels, rect: CropRect): ImagePixels {
-  const canvas = document.createElement("canvas");
-  canvas.width = rect.w;
-  canvas.height = rect.h;
-  const context = canvas.getContext("2d");
-  const source = document.createElement("canvas");
-  source.width = pixels.width;
-  source.height = pixels.height;
-  source.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
-  context?.drawImage(source, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-  const data = context?.getImageData(0, 0, rect.w, rect.h);
-  if (!data) return pixels;
-  return { width: rect.w, height: rect.h, data: data.data };
-}
-
-function Tip({ text }: { text: string }) {
-  return (
-    <span className="tip" tabIndex={0}>
-      <i>i</i>
-      <span>{text}</span>
-    </span>
-  );
-}
 
 export default function BeadStudio() {
   const imageRef = useRef<ImagePixels | null>(null);
@@ -316,28 +221,25 @@ export default function BeadStudio() {
         setProcessing(true);
         setProgress(0.04);
         try {
-          const skip = new Set(excludedRef.current);
-          const active = getPalette(paletteId).filter((color) => !skip.has(color.hex));
-          if (active.length === 0) {
-            notify("可用颜色为空，请先恢复已排除的颜色。");
-            return;
-          }
-          const result = await buildPattern(image, {
-            cols,
-            rows,
-            palette: active,
-            mode,
-            threshold,
-            metric,
-            yieldEvery: 2,
-            onProgress: (ratio) => {
+          const next = await requestPattern(
+            image,
+            {
+              cols,
+              rows,
+              paletteId,
+              excluded: excludedRef.current,
+              mode,
+              threshold,
+              metric,
+              removeBg: removeBgRef.current,
+              maxColors,
+              minCount,
+            },
+            (ratio) => {
               if (seq === runRef.current) setProgress(ratio);
             },
-          });
+          );
           if (seq !== runRef.current) return;
-          let next = result.grid;
-          if (removeBgRef.current) next = removeBorderBackground(next).grid;
-          if (maxColors > 0 || minCount > 0) next = reduceColors(next, maxColors, minCount, metric, getColorByHex).grid;
           undoRef.current = [];
           redoRef.current = [];
           bumpHist();
@@ -351,7 +253,7 @@ export default function BeadStudio() {
             setNote(changed === 0 ? "这张图色块很平整，换这个设置图纸没有变化" : `已重新生成，${changed.toLocaleString()} 格颜色有变化`);
           }
         } catch (error) {
-          if (seq !== runRef.current) return;
+          if (seq !== runRef.current || error instanceof PatternCancelled) return;
           notify(error instanceof Error ? error.message : "生成失败");
         } finally {
           if (seq === runRef.current) setProcessing(false);
@@ -900,207 +802,63 @@ export default function BeadStudio() {
     return getPalette(paletteId).filter((color) => !skip.has(color.hex));
   }, [paletteId, excluded]);
 
-  const preset = BOARDS.includes(cols) ? String(cols) : "custom";
-  const boardText = `${cols}×${rows} · ${Math.ceil(cols / 29)}×${Math.ceil(rows / 29)} 块 29 板 · ${total.toLocaleString("zh-CN")} 颗`;
 
-  function SizeFields() {
-    return (
-      <div>
-        <div className="chips" style={{ marginBottom: 12 }}>
-          {BOARDS.map((size) => (
-            <button key={size} type="button" className="chip" data-on={preset === String(size)} onClick={() => updateCols(size)}>
-              {size}
-            </button>
-          ))}
-          <button type="button" className="chip" data-on={preset === "custom"} onClick={() => updateCols(cols)}>
-            自定义
-          </button>
-        </div>
-        <div className="field">
-          <span className="row-label">宽度 {cols}</span>
-          <div className="slider-row">
-            <button type="button" className="stepper-btn" onClick={() => updateCols(cols - 1)}><Minus size={16} /></button>
-            <input type="range" min={8} max={180} value={cols} onChange={(event) => updateCols(Number(event.target.value))} />
-            <button type="button" className="stepper-btn" onClick={() => updateCols(cols + 1)}><Plus size={16} /></button>
-          </div>
-        </div>
-        <div className="field">
-          <span className="row-label">高度 {rows}</span>
-          <div className="slider-row">
-            <button type="button" className="stepper-btn" onClick={() => updateRows(rows - 1)}><Minus size={16} /></button>
-            <input type="range" min={8} max={180} value={rows} onChange={(event) => updateRows(Number(event.target.value))} />
-            <button type="button" className="stepper-btn" onClick={() => updateRows(rows + 1)}><Plus size={16} /></button>
-          </div>
-        </div>
-        <label className="inline" style={{ marginBottom: 8 }}>
-          <input type="checkbox" checked={lockRatio} onChange={(event) => setLockRatio(event.target.checked)} />
-          锁定比例
-        </label>
-        <p className="muted">{boardText}</p>
-      </div>
-    );
-  }
+  const pickAdvanced = (next: { mode?: PixelMode; metric?: DistanceMetric }) => {
+    if ((next.mode ?? mode) === mode && (next.metric ?? metric) === metric) return;
+    beforeGridRef.current = gridRef.current;
+    if (next.mode) setMode(next.mode);
+    if (next.metric) setMetric(next.metric);
+  };
 
-  function StyleFields() {
-    const styles: { id: Exclude<StyleId, "custom">; name: string }[] = [
-      { id: "cartoon", name: "卡通" },
-      { id: "pixel", name: "像素画" },
-      { id: "photo", name: "照片" },
-      { id: "simple", name: "简洁" },
-    ];
-    return (
-      <div>
-        <div className="chips">
-          {styles.map((item) => (
-            <button key={item.id} type="button" className="chip" data-on={styleId === item.id} onClick={() => applyStyle(item.id)}>
-              {item.name}
-            </button>
-          ))}
-        </div>
-        {styleId === "custom" && (
-          <p className="style-note">
-            <span className="style-badge">自定义</span>
-            已手动调过参数，点上面的风格可恢复预设
-          </p>
-        )}
-      </div>
-    );
-  }
+  const pickListColor = (hex: string) => {
+    if (tool === "brush" || tool === "fill") {
+      brushRef.current = hex;
+      setBrushHex(hex);
+      setHighlightHex(hex);
+      return;
+    }
+    setHighlightHex((current) => (current === hex ? null : hex));
+  };
 
-  function CleanFields() {
-    return (
-      <div>
-        <div className="field">
-          <span className="row-label">合并相近色 {threshold} · 当前 {counts.length} 色</span>
-          <div className="slider-row">
-            <button type="button" className="stepper-btn" onClick={() => setThreshold((value) => Math.max(0, value - 1))}><Minus size={16} /></button>
-            <input type="range" min={0} max={80} value={threshold} onChange={(event) => setThreshold(Number(event.target.value))} />
-            <button type="button" className="stepper-btn" onClick={() => setThreshold((value) => Math.min(80, value + 1))}><Plus size={16} /></button>
-          </div>
-        </div>
-        <div className="field">
-          <span className="row-label">最多用几种颜色 {maxColors === 0 ? "不限" : maxColors} <Tip text="超出的颜色从用得最少的开始，并到最接近的颜色。" /></span>
-          <div className="slider-row">
-            <button type="button" className="stepper-btn" onClick={() => setMaxColors((value) => (value <= 2 ? 0 : value - 1))}><Minus size={16} /></button>
-            <input type="range" min={0} max={60} value={maxColors} onChange={(event) => { const value = Number(event.target.value); setMaxColors(value === 1 ? 2 : value); }} />
-            <button type="button" className="stepper-btn" onClick={() => setMaxColors((value) => (value === 0 ? 2 : Math.min(60, value + 1)))}><Plus size={16} /></button>
-          </div>
-        </div>
-        <div className="field">
-          <span className="row-label">少于 {minCount === 0 ? "—" : minCount} 颗的颜色并到相近色 <Tip text="省得为了几颗豆专门买一包。0 表示不合并。" /></span>
-          <div className="slider-row">
-            <button type="button" className="stepper-btn" onClick={() => setMinCount((value) => Math.max(0, value - 1))}><Minus size={16} /></button>
-            <input type="range" min={0} max={30} value={minCount} onChange={(event) => setMinCount(Number(event.target.value))} />
-            <button type="button" className="stepper-btn" onClick={() => setMinCount((value) => Math.min(30, value + 1))}><Plus size={16} /></button>
-          </div>
-        </div>
-        <button type="button" className="chip" data-on={removeBg} onClick={toggleBackground}>去除背景</button>
-      </div>
-    );
-  }
-
-  function AdvancedFields() {
-    const pick = (next: { mode?: PixelMode; metric?: DistanceMetric }) => {
-      if ((next.mode ?? mode) === mode && (next.metric ?? metric) === metric) return;
-      beforeGridRef.current = gridRef.current;
-      if (next.mode) setMode(next.mode);
-      if (next.metric) setMetric(next.metric);
-    };
-    return (
-      <div>
-        <p className="row-label adv-label">取色方式</p>
-        <div className="chips">
-          <button type="button" className="chip" data-on={mode === "dominant"} onClick={() => pick({ mode: "dominant" })}>主色</button>
-          <button type="button" className="chip" data-on={mode === "average"} onClick={() => pick({ mode: "average" })}>平均色</button>
-        </div>
-        <p className="adv-hint">主色边缘清晰，适合卡通和像素画；平均色过渡更柔和，适合照片。</p>
-        <p className="row-label adv-label">色差算法</p>
-        <div className="chips">
-          <button type="button" className="chip" data-on={metric === "oklab"} onClick={() => pick({ metric: "oklab" })}>Oklab</button>
-          <button type="button" className="chip" data-on={metric === "ciede2000"} onClick={() => pick({ metric: "ciede2000" })}>CIEDE2000</button>
-        </div>
-        <p className="adv-hint">CIEDE2000 更接近人眼判断，计算稍慢。色块平整的图切换后可能没有变化。</p>
-      </div>
-    );
-  }
-
-
-  function ColorList() {
-    return (
-      <div>
-        <div className="inline" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-          <strong>{counts.length} 色 · {total.toLocaleString("zh-CN")} 颗</strong>
-          <select className="sort-select" aria-label="排序" value={sortBy} onChange={(event) => setSortBy(event.target.value as "count" | "code")}>
-            <option value="count">按数量</option>
-            <option value="code">按色号</option>
-          </select>
-        </div>
-        <p className="muted" style={{ margin: "0 0 8px" }}>点一下颜色，画布只亮这一色，方便一色一色地拼。</p>
-        <input className="select" placeholder="搜索色号" value={colorQuery} onChange={(event) => setColorQuery(event.target.value)} />
-        <div style={{ marginTop: 8 }}>
-          {sortedCounts.map((item) => {
-            const code = displayCode(item.hex, colorSystem);
-            return (
-              <div key={item.hex}>
-                <button
-                  type="button"
-                  className="color-row"
-                  data-on={highlightHex === item.hex}
-                  onClick={() => {
-                    if (tool === "brush" || tool === "fill") {
-                      brushRef.current = item.hex;
-                      setBrushHex(item.hex);
-                      setHighlightHex(item.hex);
-                      return;
-                    }
-                    setHighlightHex((current) => (current === item.hex ? null : item.hex));
-                  }}
-                >
-                  <i className="swatch" style={{ background: item.hex }} />
-                  <span className="code">{code}</span>
-                  <span className="muted">{item.count}</span>
-                  <span className="muted">{total ? Math.round((item.count / total) * 100) : 0}%</span>
-                </button>
-                <div className="inline" style={{ padding: "0 8px 8px" }}>
-                  <button type="button" className="ghost" style={{ minHeight: 32 }} onClick={() => excludeColor(item.hex)}>排除</button>
-                  <button type="button" className="ghost" style={{ minHeight: 32 }} onClick={() => setReplaceFrom(item.hex)}>全部替换</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {excluded.length > 0 && (
-          <details open>
-            <summary>已排除 ({excluded.length})</summary>
-            <button type="button" className="ghost" onClick={() => restoreColor()}>全部恢复</button>
-            {excluded.map((hex) => (
-              <button key={hex} type="button" className="color-row" onClick={() => restoreColor(hex)}>
-                <i className="swatch" style={{ background: hex }} />
-                <span className="code">{displayCode(hex, colorSystem)}</span>
-                <span className="muted">恢复</span>
-                <span />
-              </button>
-            ))}
-          </details>
-        )}
-        {replaceFrom && (
-          <div className="modal-back" onClick={() => setReplaceFrom(null)}>
-            <div className="modal" onClick={(event) => event.stopPropagation()}>
-              <h3>替换 {displayCode(replaceFrom, colorSystem)}</h3>
-              <div className="chips">
-                {activePalette.slice(0, 80).map((color) => (
-                  <button key={color.hex} type="button" className="chip" onClick={() => replaceAll(replaceFrom, color.hex)}>
-                    <i className="swatch" style={{ background: color.hex, display: "inline-block", marginRight: 6 }} />
-                    {displayCode(color.hex, colorSystem)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  const sizeFields = (
+    <SizeFields cols={cols} rows={rows} total={total} lockRatio={lockRatio} onLockRatio={setLockRatio} onCols={updateCols} onRows={updateRows} />
+  );
+  const styleFields = <StyleFields styleId={styleId} onStyle={applyStyle} />;
+  const cleanFields = (
+    <CleanFields
+      colorCount={counts.length}
+      threshold={threshold}
+      setThreshold={setThreshold}
+      maxColors={maxColors}
+      setMaxColors={setMaxColors}
+      minCount={minCount}
+      setMinCount={setMinCount}
+      removeBg={removeBg}
+      onToggleBackground={toggleBackground}
+    />
+  );
+  const advancedFields = <AdvancedFields mode={mode} metric={metric} onPick={pickAdvanced} />;
+  const colorList = (
+    <ColorList
+      counts={counts}
+      sortedCounts={sortedCounts}
+      total={total}
+      sortBy={sortBy}
+      setSortBy={setSortBy}
+      colorQuery={colorQuery}
+      setColorQuery={setColorQuery}
+      colorSystem={colorSystem}
+      highlightHex={highlightHex}
+      onPickColor={pickListColor}
+      onExclude={excludeColor}
+      excluded={excluded}
+      onRestore={restoreColor}
+      replaceFrom={replaceFrom}
+      setReplaceFrom={setReplaceFrom}
+      activePalette={activePalette}
+      onReplaceAll={replaceAll}
+    />
+  );
 
   const tools: { id: Tool; label: string; key: string; icon: ReactNode }[] = [
     { id: "view", label: "查看 · 拖动移动图纸", key: "V", icon: <Eye size={16} /> },
@@ -1193,7 +951,7 @@ export default function BeadStudio() {
             <button type="button" className="chip" data-on={sideTab === "settings"} onClick={() => setSideTab("settings")}>设置</button>
             <button type="button" className="chip" data-on={sideTab === "colors"} onClick={() => setSideTab("colors")}>颜色</button>
           </div>
-          {sideTab === "colors" && <div className="tablet-colors"><ColorList /></div>}
+          {sideTab === "colors" && <div className="tablet-colors">{colorList}</div>}
           <div className={sideTab === "colors" ? "settings-block" : undefined} style={sideTab === "colors" ? { display: "none" } : undefined}>
             <div className="thumb">
               {thumbUrl ? <img src={thumbUrl} alt="" /> : <div style={{ width: 72, height: 72, borderRadius: 12, background: "var(--surface-2)" }} />}
@@ -1218,19 +976,19 @@ export default function BeadStudio() {
                   <option key={choice.id} value={choice.id}>{choice.name}</option>
                 ))}
               </select>
-              <SizeFields />
+              {sizeFields}
             </section>
             <section className="section">
               <h2>图案风格 <Tip text="预设只调整取色、色差和合并强度。" /></h2>
-              <StyleFields />
+              {styleFields}
             </section>
             <section className="section">
               <h2>清理 <Tip text="只清零星杂色，大块不同的颜色会保留。" /></h2>
-              <CleanFields />
+              {cleanFields}
             </section>
             <details className="section">
               <summary>高级</summary>
-              <div style={{ marginTop: 12 }}><AdvancedFields /></div>
+              <div style={{ marginTop: 12 }}>{advancedFields}</div>
             </details>
           </div>
         </aside>
@@ -1277,7 +1035,7 @@ export default function BeadStudio() {
         </main>
         <aside className="panel right">
           <h2 style={{ marginTop: 0 }}>颜色清单</h2>
-          <ColorList />
+          {colorList}
         </aside>
         <section className="sheet mobile-only" data-open={sheetOpen}>
           <button type="button" className="handle" aria-label={sheetOpen ? "收起设置" : "展开设置"} onClick={() => setSheetOpen((value) => !value)}><i /></button>
@@ -1318,11 +1076,11 @@ export default function BeadStudio() {
           {sheetOpen && <div className="sheet-body">
             {sheetTab === "size" && <><div className="chips" style={{ marginBottom: 12 }}>{COLOR_SYSTEMS.map((system) => (
               <button key={system} type="button" className="chip" data-on={colorSystem === system} onClick={() => setColorSystem(system)}>{system}</button>
-            ))}</div><select className="select" value={paletteId} onChange={(event) => setPaletteId(event.target.value)} style={{ marginBottom: 12 }}>{PALETTE_CHOICES.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select><SizeFields /></>}
-            {sheetTab === "style" && <StyleFields />}
-            {sheetTab === "clean" && <CleanFields />}
-            {sheetTab === "colors" && <ColorList />}
-            {sheetTab === "advanced" && <AdvancedFields />}
+            ))}</div><select className="select" value={paletteId} onChange={(event) => setPaletteId(event.target.value)} style={{ marginBottom: 12 }}>{PALETTE_CHOICES.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select>{sizeFields}</>}
+            {sheetTab === "style" && styleFields}
+            {sheetTab === "clean" && cleanFields}
+            {sheetTab === "colors" && colorList}
+            {sheetTab === "advanced" && advancedFields}
           </div>}
         </section>
       </div>
