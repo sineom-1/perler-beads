@@ -1,6 +1,6 @@
 import csv,json,sys
 src,out=sys.argv[1],sys.argv[2]
-defs=[("artkal-s","Artkal S","Artkal","S 系列 5mm","Artkal_S.csv","官方 RGB 色卡，其中 4 色为社区值"),
+defs=[("artkal-s","Artkal S","Artkal","S 系列 5mm","Artkal_S.csv","官方 RGB 色卡，其中 5 色为社区值"),
       ("artkal-c","Artkal C","Artkal","C 系列 2.6mm","Artkal_C.csv","官方 RGB 色卡（社区整理）"),
       ("artkal-m","Artkal M","Artkal","M 系列 2.6mm","Artkal_M.csv","官方 RGB 色卡（社区整理）"),
       ("perler","Perler","Perler","Midi 5mm","Perler.csv","社区实测色值（maxcleme/beadcolors），少数为官方商品图估算"),
