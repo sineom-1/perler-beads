@@ -8,6 +8,7 @@ import { downloadCanvas, renderPatternCanvas, renderShoppingListCanvas } from "@
 import { decodeImageFile } from "@/lib/imageFile";
 import { renderPrintPdf } from "@/lib/printPdf";
 import { PatternCancelled, requestPattern } from "@/lib/patternClient";
+import { assessDifficulty } from "@/lib/stylize";
 import {
   compareCodes,
   isCommunitySystem,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/pixelate";
 import { BASE_CELL, drawViewport, fitView, hitCell } from "@/lib/preview";
 import { aspectCrop, autoRows, clamp, cropPixels, emptyGrid, fullRect, pixelsToUrl } from "@/lib/imageOps";
-import { CROP_RATIOS, STYLE_PRESETS, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
+import { CROP_RATIOS, PLAIN_LOOK, STYLE_PRESETS, sameLook, type Look, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
 import { SourceNote, Tip } from "./studio/ui";
 import { AdvancedFields, BrandFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
 
@@ -72,6 +73,7 @@ export default function BeadStudio() {
   const [removeBg, setRemoveBg] = useState(false);
   const [maxColors, setMaxColors] = useState(0);
   const [minCount, setMinCount] = useState(0);
+  const [look, setLook] = useState<Look>(PLAIN_LOOK);
   const [pitchMm, setPitchMm] = useState(5);
   const [pdfBusy, setPdfBusy] = useState<number | null>(null);
   const [grid, setGrid] = useState<GridCell[][] | null>(null);
@@ -235,6 +237,7 @@ export default function BeadStudio() {
               removeBg: removeBgRef.current,
               maxColors,
               minCount,
+              ...look,
             },
             (ratio) => {
               if (seq === runRef.current) setProgress(ratio);
@@ -262,13 +265,13 @@ export default function BeadStudio() {
       })();
     }, 160);
     return () => window.clearTimeout(timer);
-  }, [cols, rows, paletteId, mode, threshold, metric, maxColors, minCount, buildToken, applyGrid, notify]);
+  }, [cols, rows, paletteId, mode, threshold, metric, maxColors, minCount, look, buildToken, applyGrid, notify]);
 
   // The style chip reflects the current settings directly, so it never drifts.
   const styleId: StyleId =
     (Object.keys(STYLE_PRESETS) as Exclude<StyleId, "custom">[]).find((id) => {
       const preset = STYLE_PRESETS[id];
-      return preset.mode === mode && preset.metric === metric && preset.threshold === threshold;
+      return preset.mode === mode && preset.metric === metric && preset.threshold === threshold && preset.maxColors === maxColors && sameLook(preset.look, look);
     }) ?? "custom";
 
   useEffect(() => {
@@ -496,6 +499,16 @@ export default function BeadStudio() {
     setMode(preset.mode);
     setMetric(preset.metric);
     setThreshold(preset.threshold);
+    setMaxColors(preset.maxColors);
+    setLook(preset.look);
+    if (preset.removeBg && !removeBg) {
+      removeBgRef.current = true;
+      setRemoveBg(true);
+    }
+  }
+
+  function updateLook(patch: Partial<Look>) {
+    setLook((previous) => ({ ...previous, ...patch }));
   }
 
   function zoomBy(factor: number) {
@@ -829,6 +842,8 @@ export default function BeadStudio() {
     setPaletteId(paletteForSystem(next, paletteId));
   }
 
+  const difficulty = useMemo(() => (grid && !blankRef.current ? assessDifficulty(grid) : null), [grid]);
+
   const brandFields = (
     <BrandFields system={colorSystem} paletteId={paletteId} onSystem={pickSystem} onPalette={setPaletteId} />
   );
@@ -836,7 +851,7 @@ export default function BeadStudio() {
   const sizeFields = (
     <SizeFields cols={cols} rows={rows} total={total} lockRatio={lockRatio} onLockRatio={setLockRatio} onCols={updateCols} onRows={updateRows} />
   );
-  const styleFields = <StyleFields styleId={styleId} onStyle={applyStyle} />;
+  const styleFields = <StyleFields styleId={styleId} onStyle={applyStyle} look={look} onLook={updateLook} difficulty={difficulty} />;
   const cleanFields = (
     <CleanFields
       colorCount={counts.length}

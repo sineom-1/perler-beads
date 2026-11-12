@@ -45,6 +45,8 @@ export interface BuildOptions {
   metric: DistanceMetric;
   onProgress?: (ratio: number) => void;
   yieldEvery?: number;
+  /** Floyd–Steinberg error diffusion strength, 0 (off) to 1 (full). */
+  dither?: number;
 }
 
 function representative(
@@ -220,6 +222,9 @@ export async function buildPattern(
 ): Promise<{ grid: GridCell[][]; counts: ColorCount[]; total: number }> {
   const { width, height, data } = image;
   const { cols, rows, palette, mode, threshold, metric, onProgress, yieldEvery = 0 } = options;
+  const dither = Math.max(0, Math.min(1, options.dither ?? 0));
+  let errorRow = new Float32Array((cols + 2) * 3);
+  let errorNext = new Float32Array((cols + 2) * 3);
   if (palette.length === 0) throw new Error("当前色板没有可用颜色");
   if (cols < 1 || rows < 1) throw new Error("网格尺寸无效");
 
@@ -249,12 +254,32 @@ export async function buildPattern(
       const rgb = representative(data, width, startX, startY, sampleWidth, sampleHeight, mode);
       if (!rgb) {
         line.push({ ...ERASED_CELL });
+      } else if (dither > 0) {
+        const at = (col + 1) * 3;
+        const want = {
+          r: Math.max(0, Math.min(255, Math.round(rgb.r + errorRow[at] * dither))),
+          g: Math.max(0, Math.min(255, Math.round(rgb.g + errorRow[at + 1] * dither))),
+          b: Math.max(0, Math.min(255, Math.round(rgb.b + errorRow[at + 2] * dither))),
+        };
+        const bead = closest(want);
+        line.push({ key: bead.key, hex: bead.hex, isExternal: false });
+        const diff = [want.r - bead.rgb.r, want.g - bead.rgb.g, want.b - bead.rgb.b];
+        for (let k = 0; k < 3; k++) {
+          errorRow[at + 3 + k] += (diff[k] * 7) / 16;
+          errorNext[at - 3 + k] += (diff[k] * 3) / 16;
+          errorNext[at + k] += (diff[k] * 5) / 16;
+          errorNext[at + 3 + k] += diff[k] / 16;
+        }
       } else {
         const bead = closest(rgb);
         line.push({ key: bead.key, hex: bead.hex, isExternal: false });
       }
     }
     grid.push(line);
+    if (dither > 0) {
+      [errorRow, errorNext] = [errorNext, errorRow];
+      errorNext.fill(0);
+    }
     if (yieldEvery > 0 && row % yieldEvery === 0) {
       onProgress?.(0.05 + (row / rows) * 0.8);
       await new Promise((resolve) => setTimeout(resolve, 0));

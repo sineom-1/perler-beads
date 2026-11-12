@@ -6,6 +6,7 @@
 import type { DistanceMetric, PixelMode } from "./color";
 import { getColorByHex, getPalette } from "./palette";
 import { buildPattern, reduceColors, removeBorderBackground, type GridCell, type ImagePixels } from "./pixelate";
+import { addOutline, darkestColor, posterize, smoothGrid, trimToSubject } from "./stylize";
 
 export interface GenerateOptions {
   cols: number;
@@ -18,6 +19,16 @@ export interface GenerateOptions {
   removeBg: boolean;
   maxColors: number;
   minCount: number;
+  /** Floyd–Steinberg strength 0–1. */
+  dither?: number;
+  /** Majority-filter passes: 0 keeps every detail, 2 is the simplest. */
+  smooth?: number;
+  /** Outline thickness in beads around the subject; needs a removed background. */
+  outline?: number;
+  /** Crop the image to the subject before sampling (Q-style close-up). */
+  trim?: boolean;
+  /** Levels per channel for a retro look; 0 is off. */
+  posterize?: number;
 }
 
 export class EmptyPaletteError extends Error {
@@ -36,7 +47,10 @@ export async function generatePattern(
   const skip = new Set(options.excluded);
   const active = getPalette(options.paletteId).filter((color) => !skip.has(color.hex));
   if (active.length === 0) throw new EmptyPaletteError();
-  const result = await buildPattern(image, {
+  let source = image;
+  if (options.trim) source = trimToSubject(source, options.cols, options.rows);
+  if (options.posterize && options.posterize > 1) source = posterize(source, options.posterize);
+  const result = await buildPattern(source, {
     cols: options.cols,
     rows: options.rows,
     palette: active,
@@ -45,11 +59,17 @@ export async function generatePattern(
     metric: options.metric,
     yieldEvery,
     onProgress,
+    dither: options.dither,
   });
   let next = result.grid;
-  if (options.removeBg) next = removeBorderBackground(next).grid;
+  if (options.removeBg || (options.outline ?? 0) > 0) next = removeBorderBackground(next).grid;
+  if (options.smooth && options.smooth > 0) next = smoothGrid(next, options.smooth);
   if (options.maxColors > 0 || options.minCount > 0) {
     next = reduceColors(next, options.maxColors, options.minCount, options.metric, getColorByHex).grid;
+  }
+  if (options.outline && options.outline > 0) {
+    const ink = darkestColor(active);
+    if (ink) next = addOutline(next, ink, options.outline).grid;
   }
   return next;
 }

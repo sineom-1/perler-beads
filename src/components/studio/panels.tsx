@@ -3,7 +3,8 @@ import { Minus, Plus } from "lucide-react";
 import type { DistanceMetric, PaletteColor, PixelMode } from "@/lib/color";
 import { BRAND_SYSTEMS, COMMUNITY_SYSTEMS, colorDetail, displayCode, paletteChoicesFor, systemNote, type ColorSystem } from "@/lib/palette";
 import type { ColorCount } from "@/lib/pixelate";
-import { BOARDS, type StyleId } from "./constants";
+import { BOARDS, STYLE_PRESETS, type Look, type StyleId } from "./constants";
+import type { DifficultyReport } from "@/lib/stylize";
 import { Tip } from "./ui";
 
 export function BrandFields({ system, paletteId, onSystem, onPalette }: {
@@ -84,26 +85,60 @@ export function SizeFields({ cols, rows, total, lockRatio, onLockRatio, onCols, 
   );
 }
 
-export function StyleFields({ styleId, onStyle }: { styleId: StyleId; onStyle: (id: Exclude<StyleId, "custom">) => void }) {
-  const styles: { id: Exclude<StyleId, "custom">; name: string }[] = [
-    { id: "cartoon", name: "卡通" },
-    { id: "pixel", name: "像素画" },
-    { id: "photo", name: "照片" },
-    { id: "simple", name: "简洁" },
-  ];
+export function StyleFields({ styleId, onStyle, look, onLook, difficulty }: {
+  styleId: StyleId;
+  onStyle: (id: Exclude<StyleId, "custom">) => void;
+  look: Look;
+  onLook: (patch: Partial<Look>) => void;
+  difficulty: DifficultyReport | null;
+}) {
+  const ids = Object.keys(STYLE_PRESETS) as Exclude<StyleId, "custom">[];
+  const smoothLabel = ["高", "中", "低"];
   return (
     <div>
       <div className="chips">
-        {styles.map((item) => (
-          <button key={item.id} type="button" className="chip" data-on={styleId === item.id} onClick={() => onStyle(item.id)}>
-            {item.name}
+        {ids.map((id) => (
+          <button key={id} type="button" className="chip" title={STYLE_PRESETS[id].hint} data-on={styleId === id} onClick={() => onStyle(id)}>
+            {STYLE_PRESETS[id].name}
           </button>
         ))}
       </div>
-      {styleId === "custom" && (
+      {styleId === "custom" ? (
         <p className="style-note">
           <span className="style-badge">自定义</span>
           已手动调过参数，点上面的风格可恢复预设
+        </p>
+      ) : (
+        <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>{STYLE_PRESETS[styleId].hint}</p>
+      )}
+      <div className="field" style={{ marginTop: 12 }}>
+        <span>细节 <Tip text="细节越低，零碎的单颗越少，越好拼。" /></span>
+        <div className="chips">
+          {smoothLabel.map((label, value) => (
+            <button key={label} type="button" className="chip" data-on={look.smooth === value} onClick={() => onLook({ smooth: value })}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="field" style={{ marginTop: 12 }}>
+        <span>描边 <Tip text="在主体外围加一圈最深的颜色，会自动去掉背景。" /></span>
+        <div className="chips">
+          {["无", "1 格", "2 格"].map((label, value) => (
+            <button key={label} type="button" className="chip" data-on={look.outline === value} onClick={() => onLook({ outline: value })}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <label className="field" style={{ marginTop: 12, display: "block" }}>
+        <span>抖动 {Math.round(look.dither * 100)}% <Tip text="用相邻色点交错模拟过渡色，适合照片；拼起来更零碎。" /></span>
+        <input type="range" min={0} max={100} step={10} value={Math.round(look.dither * 100)} onChange={(event) => onLook({ dither: Number(event.target.value) / 100 })} style={{ width: "100%" }} />
+      </label>
+      <label className="inline" style={{ marginTop: 8, gap: 8 }}>
+        <input type="checkbox" checked={look.trim} onChange={(event) => onLook({ trim: event.target.checked })} />
+        <span>裁到主体放大</span>
+      </label>
+      {difficulty && (
+        <p className="difficulty" data-level={difficulty.level} style={{ marginTop: 12, fontSize: 13 }}>
+          <span className="style-badge">难度：{difficulty.label}</span>{" "}
+          <span className="muted">{difficulty.reasons.join("，")}</span>
         </p>
       )}
     </div>
