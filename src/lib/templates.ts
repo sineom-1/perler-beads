@@ -1,6 +1,7 @@
 import { hexToRgb } from "./color";
 import type { ImagePixels } from "./pixelate";
-import { GLYPHS, TEMPLATE_COLORS, type BeadTemplate } from "../data/templates";
+import { buildNameTag } from "./nameTag";
+import { TEMPLATE_COLORS, type BeadTemplate } from "../data/templates";
 
 /** One pixel per bead; empty cells are transparent so they become blank cells. */
 export function templatePixels(rows: string[], colors: Record<string, string> = TEMPLATE_COLORS): ImagePixels {
@@ -26,21 +27,9 @@ export function templateImage(template: BeadTemplate): ImagePixels {
 }
 
 /**
- * A name tag: the text in 5×7 glyphs on a plate with a one-bead border and
- * cut corners. Unsupported characters are skipped; at most 8 characters.
- * Returns null when nothing printable is left.
+ * A name tag: the text on a rounded plate. Kept for callers that only need the
+ * classic look; see buildNameTag for fonts, frames and colour themes.
  */
-export function nameTagRows(text: string, ink = "K", plate = "W", border = "R"): string[] | null {
-  const chars = [...text.toUpperCase()].filter((ch) => GLYPHS[ch] || ch === " ").slice(0, 8);
-  if (!chars.some((ch) => GLYPHS[ch])) return null;
-  const blank = Array.from({ length: 7 }, () => "...");
-  const lines = Array.from({ length: 7 }, (_, y) =>
-    chars.map((ch) => (GLYPHS[ch] ?? blank)[y]).join("."),
-  ).map((line) => line.replace(/#/g, ink).replace(/\./g, plate));
-  const inner = lines.map((line) => plate + plate + line + plate + plate);
-  const width = inner[0].length;
-  const pad = plate.repeat(width);
-  const framed = [pad, ...inner, pad].map((line) => border + line + border);
-  const edge = "." + border.repeat(width) + ".";
-  return [edge, ...framed, edge];
+export function nameTagRows(text: string): string[] | null {
+  return buildNameTag(text);
 }
