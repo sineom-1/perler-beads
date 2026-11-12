@@ -8,8 +8,10 @@
  * really enables 168 colors. 96/120/144 include the upstream extra white bead T1.
  *
  * Artkal S/C/M colors come from Artkal's published RGB charts, partly via
- * HansBug/pindou-color-data (MIT, Copyright (c) 2026 HansBug). Perler colors are
- * sampled from the official product swatch photos and are estimates.
+ * HansBug/pindou-color-data (MIT, Copyright (c) 2026 HansBug). Hama, Nabbi, most
+ * Perler colors and five Artkal S gaps come from maxcleme/beadcolors (MIT,
+ * Copyright (c) 2020 maxcleme); the remaining Perler colors are sampled from the
+ * official product swatch photos and are estimates.
  * This app is not affiliated with any bead brand.
  */
 
@@ -68,6 +70,7 @@ export const SPECIAL_FINISH_LABEL: Record<string, string> = {
   metallic: "金属",
   pearl: "珠光",
   glitter: "闪粉",
+  neon: "荧光",
 };
 
 const SPECIAL_SUFFIX = "+special";
@@ -123,9 +126,12 @@ export function systemPitchMm(system: ColorSystem): number | undefined {
 export function systemNote(system: ColorSystem): string {
   const brand = brandBySystem(system);
   if (!brand) return "社区参考色卡：色值来自公开整理，非品牌官方数据。屏幕色仅供参考，以实物为准。";
-  const estimate = brand.colors.some((color) => color.estimated) && brand.colors.every((color) => color.estimated)
-    ? "色值为估算，偏差可能较大。"
-    : "";
+  const estimatedCount = brand.colors.filter((color) => color.estimated).length;
+  const estimate = estimatedCount === 0
+    ? ""
+    : estimatedCount === brand.colors.length
+      ? "色值为估算，偏差可能较大。"
+      : `其中 ${estimatedCount} 色为估算值。`;
   return `${brand.brand} ${brand.series}，${brand.source}。${estimate}屏幕色仅供参考，以实物为准。本站与品牌无关联。`;
 }
 

@@ -971,7 +971,7 @@ export default function BeadStudio() {
           </div>
           <h1>数豆格</h1>
           <p className="tagline">传图生成拼豆图纸，<br />支持 291 色号对照、单色高亮与 1:1 分板打印 PDF</p>
-          <p className="muted">支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 / Artkal / Perler · 图片只在本机处理，不会上传</p>
+          <p className="muted">支持 MARD / COCO / 漫漫 / 盼盼 / 咪小窝 / Artkal / Perler / Hama / Nabbi · 图片只在本机处理，不会上传</p>
           <div className="inline" style={{ justifyContent: "center" }}>
             <button type="button" className="primary" onClick={() => fileRef.current?.click()}>上传图片</button>
             <button type="button" className="ghost" onClick={() => void loadSample()}>试试示例</button>

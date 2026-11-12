@@ -28,11 +28,11 @@ function noiseImage(width: number, height: number, seed: number): ImagePixels {
 }
 
 test("each international brand has its own palette and codes", () => {
-  assert.deepEqual(BRAND_SYSTEMS, ["Artkal S", "Artkal C", "Artkal M", "Perler"]);
+  assert.deepEqual(BRAND_SYSTEMS, ["Artkal S", "Artkal C", "Artkal M", "Perler", "Hama", "Nabbi"]);
   for (const system of BRAND_SYSTEMS) {
     const id = defaultPaletteFor(system);
     const palette = getPalette(id);
-    assert.ok(palette.length > 100, `${system} ${palette.length}`);
+    assert.ok(palette.length >= 25, `${system} ${palette.length}`);
     for (const color of palette) {
       const code = displayCode(color.hex, system);
       assert.notEqual(code, "?", `${system} ${color.hex}`);
@@ -47,8 +47,8 @@ test("special finishes are opt-in", () => {
   const choices = paletteChoicesFor("Perler");
   assert.equal(choices.length, 2);
   assert.ok(getPalette(choices[1].id).length > getPalette(choices[0].id).length);
-  assert.equal(getPalette("perler").length, 118);
-  assert.equal(getPalette("perler+special").length, 123);
+  assert.equal(getPalette("perler").length, 125);
+  assert.equal(getPalette("perler+special").length, 131);
 });
 
 test("brand generation only uses that brand's colors", async () => {
@@ -73,7 +73,11 @@ test("switching system keeps or resets the palette correctly", () => {
 test("known official codes", () => {
   assert.equal(displayCode("#FFFFFF", "Artkal S"), "S01");
   assert.equal(displayCode("#FFF6D4", "Artkal M"), "MA1");
-  assert.equal(displayCode("#D01D31", "Perler"), "80-19005");
-  assert.equal(colorDetail("#D01D31", "Perler").name, "Red");
+  assert.equal(displayCode("#B0353C", "Perler"), "80-19005");
+  assert.equal(colorDetail("#B0353C", "Perler").name, "Red");
+  assert.equal(displayCode("#E5ECF1", "Hama"), "H01");
+  assert.equal(colorDetail("#E5ECF1", "Hama").name, "White");
+  assert.equal(displayCode("#9D5B2E", "Artkal S"), "S41");
+  assert.equal(colorDetail("#9D5B2E", "Artkal S").finish, "金属");
   assert.equal(displayCode("#FD543D", "MARD"), "A14");
 });
