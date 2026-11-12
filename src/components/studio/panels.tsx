@@ -1,10 +1,40 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Minus, Plus } from "lucide-react";
 import type { DistanceMetric, PaletteColor, PixelMode } from "@/lib/color";
-import { displayCode, type ColorSystem } from "@/lib/palette";
+import { BRAND_SYSTEMS, COMMUNITY_SYSTEMS, colorDetail, displayCode, paletteChoicesFor, systemNote, type ColorSystem } from "@/lib/palette";
 import type { ColorCount } from "@/lib/pixelate";
 import { BOARDS, type StyleId } from "./constants";
 import { Tip } from "./ui";
+
+export function BrandFields({ system, paletteId, onSystem, onPalette }: {
+  system: ColorSystem;
+  paletteId: string;
+  onSystem: (value: ColorSystem) => void;
+  onPalette: (value: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="field-label" style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>国内品牌（社区参考色卡）</div>
+      <div className="chips" style={{ marginBottom: 8 }}>
+        {COMMUNITY_SYSTEMS.map((item) => (
+          <button key={item} type="button" className="chip" data-on={system === item} onClick={() => onSystem(item)}>{item}</button>
+        ))}
+      </div>
+      <div className="field-label" style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>国际品牌</div>
+      <div className="chips" style={{ marginBottom: 8 }}>
+        {BRAND_SYSTEMS.map((item) => (
+          <button key={item} type="button" className="chip" data-on={system === item} onClick={() => onSystem(item)}>{item}</button>
+        ))}
+      </div>
+      <select className="select" aria-label="色板" value={paletteId} onChange={(event) => onPalette(event.target.value)} style={{ marginBottom: 6 }}>
+        {paletteChoicesFor(system).map((choice) => (
+          <option key={choice.id} value={choice.id}>{choice.name}</option>
+        ))}
+      </select>
+      <p className="brand-note" style={{ fontSize: 12, opacity: 0.7, lineHeight: 1.5, margin: 0 }}>{systemNote(system)}</p>
+    </div>
+  );
+}
 
 export function SizeFields({ cols, rows, total, lockRatio, onLockRatio, onCols, onRows }: {
   cols: number;
@@ -211,6 +241,8 @@ export function ColorList({
       <div style={{ marginTop: 8 }}>
         {sortedCounts.map((item) => {
           const code = displayCode(item.hex, colorSystem);
+          const detail = colorDetail(item.hex, colorSystem);
+          const extra = [detail.name, detail.finish].filter(Boolean).join(" · ");
           return (
             <div key={item.hex}>
               <button
@@ -220,7 +252,7 @@ export function ColorList({
                 onClick={() => onPickColor(item.hex)}
               >
                 <i className="swatch" style={{ background: item.hex }} />
-                <span className="code">{code}</span>
+                <span className="code" title={extra || undefined}>{code}{extra && <small className="muted" style={{ marginLeft: 4, fontWeight: 400 }}>{extra}</small>}</span>
                 <span className="muted">{item.count}</span>
                 <span className="muted">{total ? Math.round((item.count / total) * 100) : 0}%</span>
               </button>

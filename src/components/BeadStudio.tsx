@@ -9,9 +9,10 @@ import { decodeImageFile } from "@/lib/imageFile";
 import { renderPrintPdf } from "@/lib/printPdf";
 import { PatternCancelled, requestPattern } from "@/lib/patternClient";
 import {
-  COLOR_SYSTEMS,
-  PALETTE_CHOICES,
   compareCodes,
+  isCommunitySystem,
+  paletteForSystem,
+  paletteLabel as labelForPalette,
   displayCode,
   getColorByHex,
   getPalette,
@@ -33,7 +34,7 @@ import { BASE_CELL, drawViewport, fitView, hitCell } from "@/lib/preview";
 import { aspectCrop, autoRows, clamp, cropPixels, emptyGrid, fullRect, pixelsToUrl } from "@/lib/imageOps";
 import { CROP_RATIOS, STYLE_PRESETS, type CropRatio, type CropRect, type SheetTab, type Shape, type StyleId, type Tool } from "./studio/constants";
 import { SourceNote, Tip } from "./studio/ui";
-import { AdvancedFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
+import { AdvancedFields, BrandFields, CleanFields, ColorList, SizeFields, StyleFields } from "./studio/panels";
 
 
 export default function BeadStudio() {
@@ -712,7 +713,7 @@ export default function BeadStudio() {
   function downloadPattern() {
     const current = gridRef.current;
     if (!current) return;
-    const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
+    const paletteLabel = labelForPalette(colorSystem, paletteId);
     const canvas = renderPatternCanvas({
       grid: current,
       counts,
@@ -734,7 +735,7 @@ export default function BeadStudio() {
   async function downloadPdf() {
     const current = gridRef.current;
     if (!current || pdfBusy !== null) return;
-    const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
+    const paletteLabel = labelForPalette(colorSystem, paletteId);
     setPdfBusy(0);
     try {
       const { blob, pages } = await renderPrintPdf({
@@ -765,7 +766,7 @@ export default function BeadStudio() {
 
   function downloadList() {
     if (!gridRef.current) return;
-    const paletteLabel = PALETTE_CHOICES.find((item) => item.id === paletteId)?.name ?? "";
+    const paletteLabel = labelForPalette(colorSystem, paletteId);
     const canvas = renderShoppingListCanvas({
       counts,
       total,
@@ -819,6 +820,18 @@ export default function BeadStudio() {
     }
     setHighlightHex((current) => (current === hex ? null : hex));
   };
+
+  function pickSystem(next: ColorSystem) {
+    const sameFamily = isCommunitySystem(next) && isCommunitySystem(colorSystem);
+    setColorSystem(next);
+    if (sameFamily) return;
+    setExcluded([]);
+    setPaletteId(paletteForSystem(next, paletteId));
+  }
+
+  const brandFields = (
+    <BrandFields system={colorSystem} paletteId={paletteId} onSystem={pickSystem} onPalette={setPaletteId} />
+  );
 
   const sizeFields = (
     <SizeFields cols={cols} rows={rows} total={total} lockRatio={lockRatio} onLockRatio={setLockRatio} onCols={updateCols} onRows={updateRows} />
@@ -966,16 +979,7 @@ export default function BeadStudio() {
             </div>
             <section className="section">
               <h2>基础 <Tip text="宽度按拼豆板 29 格对齐，也可自定义。" /></h2>
-              <div className="chips" style={{ marginBottom: 12 }}>
-                {COLOR_SYSTEMS.map((system) => (
-                  <button key={system} type="button" className="chip" data-on={colorSystem === system} onClick={() => setColorSystem(system)}>{system}</button>
-                ))}
-              </div>
-              <select className="select" value={paletteId} onChange={(event) => setPaletteId(event.target.value)} style={{ marginBottom: 12 }}>
-                {PALETTE_CHOICES.map((choice) => (
-                  <option key={choice.id} value={choice.id}>{choice.name}</option>
-                ))}
-              </select>
+              {brandFields}
               {sizeFields}
             </section>
             <section className="section">
@@ -1074,9 +1078,7 @@ export default function BeadStudio() {
             ))}
           </div>
           {sheetOpen && <div className="sheet-body">
-            {sheetTab === "size" && <><div className="chips" style={{ marginBottom: 12 }}>{COLOR_SYSTEMS.map((system) => (
-              <button key={system} type="button" className="chip" data-on={colorSystem === system} onClick={() => setColorSystem(system)}>{system}</button>
-            ))}</div><select className="select" value={paletteId} onChange={(event) => setPaletteId(event.target.value)} style={{ marginBottom: 12 }}>{PALETTE_CHOICES.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}</select>{sizeFields}</>}
+            {sheetTab === "size" && <>{brandFields}{sizeFields}</>}
             {sheetTab === "style" && styleFields}
             {sheetTab === "clean" && cleanFields}
             {sheetTab === "colors" && colorList}

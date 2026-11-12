@@ -241,7 +241,7 @@ export function renderPatternCanvas(options: PatternExportOptions): HTMLCanvasEl
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
-  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}${options.mirror ? " · 已镜像" : ""}`, margin, height - 18);
+  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}${options.mirror ? " · 已镜像" : ""} · 屏幕色仅供参考，以实物为准`, margin, height - 18);
   return canvas;
 }
 
@@ -302,7 +302,7 @@ export function renderShoppingListCanvas(options: {
   context.fillStyle = "#A0968D";
   context.font = `500 13px ${FONT}`;
   context.textAlign = "left";
-  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")}`, 24, height - 22);
+  context.fillText(`数豆格 · ${new Date().toLocaleDateString("zh-CN")} · 屏幕色仅供参考，以实物为准，与品牌无关联`, 24, height - 22);
   return canvas;
 }
 

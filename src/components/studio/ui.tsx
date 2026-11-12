@@ -5,6 +5,8 @@ export function SourceNote({ style }: { style?: CSSProperties }) {
   return (
     <p className="source-note" style={style}>
       <a href={SOURCE_URL} target="_blank" rel="noreferrer">源码与许可</a>
+      {" · "}
+      <a href={`${SOURCE_URL}/blob/main/THIRD_PARTY_NOTICES.md`} target="_blank" rel="noreferrer">色卡来源</a>
     </p>
   );
 }
